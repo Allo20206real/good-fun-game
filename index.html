@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bounce Duel</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  .overlay {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; background: rgba(0,0,0,.85); text-align: center; padding: 16px;
+  }
+  .hidden { display: none; }
+  h1 { margin: 0 0 8px; font-size: clamp(32px, 7vw, 64px); letter-spacing: 2px; }
+  p { margin: 0; color: #bbb; max-width: 560px; line-height: 1.5; }
+  .players { display: flex; gap: 24px; flex-wrap: wrap; justify-content: center; }
+  label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+  input {
+    background: #111; color: #fff; border: 2px solid #444; border-radius: 6px;
+    padding: 10px 12px; font-size: 18px; width: 220px; outline: none;
+  }
+  input:focus { border-color: #fff; }
+  button {
+    background: #fff; color: #000; border: 0; border-radius: 6px; padding: 12px 32px;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+  }
+  button:hover { background: #ddd; }
+  .p1 { color: #ff4d5e; }
+  .p2 { color: #4da6ff; }
+  #hint {
+    position: fixed; top: 64px; left: 0; right: 0; text-align: center; font-size: 20px;
+    pointer-events: none; text-shadow: 0 0 6px #000;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hint" class="hidden"></div>
+
+<div id="menu" class="overlay">
+  <h1>BOUNCE DUEL</h1>
+  <p>Two white cubes bounce like the DVD logo. Each cube has a spike orbiting around it.
+     Every time your spike hits the other cube it deals 1 damage. Both have 100 HP &mdash; first to 0 loses!</p>
+  <div class="players">
+    <label class="p1">Player 1 name <input id="name1" maxlength="16" value="Player 1"></label>
+    <label class="p2">Player 2 name <input id="name2" maxlength="16" value="Player 2"></label>
+  </div>
+  <button id="startBtn">Start</button>
+</div>
+
+<div id="over" class="overlay hidden">
+  <h1 id="winText"></h1>
+  <button id="againBtn">Rematch</button>
+  <button id="menuBtn">Change names</button>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hint = document.getElementById('hint');
+
+const SIZE = 64;            // cube side length
+const ORBIT = 130;          // spike orbit radius from cube center
+const SPIKE_LEN = 34;
+const SPIKE_W = 18;
+const BASE_SPEED = 260;     // px/s
+const ORBIT_SPEED = 4.2;    // rad/s
+const HIT_COOLDOWN = 0.02;  // s between hits from the same spike
+const MAX_HP = 100;
+const COLORS = ['#ff4d5e', '#4da6ff'];
+
+let W = 0, H = 0;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+let players = [];
+let state = 'menu'; // menu | place | aim | play | over
+let placing = 0;
+let mouse = { x: W / 2, y: H / 2 };
+let elapsed = 0;
+let particles = [];
+
+function makePlayer(name, i) {
+  return {
+    name, color: COLORS[i], hp: MAX_HP,
+    x: 0, y: 0, vx: 0, vy: 0,
+    angle: i * Math.PI, spin: i === 0 ? 1 : -1,
+    cooldown: 0, flash: 0, placed: false,
+  };
+}
+
+function startMatch() {
+  const n1 = document.getElementById('name1').value.trim() || 'Player 1';
+  const n2 = document.getElementById('name2').value.trim() || 'Player 2';
+  players = [makePlayer(n1, 0), makePlayer(n2, 1)];
+  particles = [];
+  elapsed = 0;
+  placing = 0;
+  state = 'place';
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('over').classList.add('hidden');
+  updateHint();
+}
+
+function updateHint() {
+  if (state === 'place' || state === 'aim') {
+    const p = players[placing];
+    hint.innerHTML = `<b style="color:${p.color}">${escapeHtml(p.name)}</b>: ` +
+      (state === 'place' ? 'click where your cube starts' : 'click to choose the bounce direction');
+    hint.classList.remove('hidden');
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function clampPos(x, y) {
+  const h = SIZE / 2;
+  return { x: Math.min(W - h, Math.max(h, x)), y: Math.min(H - h, Math.max(h, y)) };
+}
+
+canvas.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+canvas.addEventListener('click', e => {
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  const p = players[placing];
+  if (state === 'place') {
+    const pos = clampPos(e.clientX, e.clientY);
+    const other = players[1 - placing];
+    if (other.placed && Math.abs(other.x - pos.x) < SIZE && Math.abs(other.y - pos.y) < SIZE) return; // no overlapping
+    p.x = pos.x; p.y = pos.y; p.placed = true;
+    state = 'aim';
+  } else if (state === 'aim') {
+    let dx = e.clientX - p.x, dy = e.clientY - p.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 5) { dx = 1; dy = 1; }
+    const l = Math.hypot(dx, dy);
+    p.vx = dx / l * BASE_SPEED;
+    p.vy = dy / l * BASE_SPEED;
+    if (placing === 0) { placing = 1; state = 'place'; }
+    else { state = 'play'; }
+  }
+  updateHint();
+});
+
+document.getElementById('startBtn').onclick = startMatch;
+document.getElementById('againBtn').onclick = startMatch;
+document.getElementById('menuBtn').onclick = () => {
+  document.getElementById('over').classList.add('hidden');
+  document.getElementById('menu').classList.remove('hidden');
+  state = 'menu';
+};
+document.querySelectorAll('input').forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') startMatch(); }));
+
+function spikePos(p) {
+  return { x: p.x + Math.cos(p.angle) * ORBIT, y: p.y + Math.sin(p.angle) * ORBIT };
+}
+
+// Spike triangle points (tip faces outward, away from its own cube)
+function spikePoints(p) {
+  const c = Math.cos(p.angle), s = Math.sin(p.angle);
+  const bx = p.x + c * (ORBIT - SPIKE_LEN / 2), by = p.y + s * (ORBIT - SPIKE_LEN / 2);
+  const tip = { x: p.x + c * (ORBIT + SPIKE_LEN / 2), y: p.y + s * (ORBIT + SPIKE_LEN / 2) };
+  return [tip, { x: bx - s * SPIKE_W / 2, y: by + c * SPIKE_W / 2 }, { x: bx + s * SPIKE_W / 2, y: by - c * SPIKE_W / 2 }];
+}
+
+function pointInBox(pt, b) {
+  const h = SIZE / 2;
+  return pt.x > b.x - h && pt.x < b.x + h && pt.y > b.y - h && pt.y < b.y + h;
+}
+
+function spikeHits(attacker, target) {
+  const pts = spikePoints(attacker);
+  const mid = spikePos(attacker);
+  return [...pts, mid].some(pt => pointInBox(pt, target));
+}
+
+function burst(x, y, color) {
+  for (let i = 0; i < 10; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 60 + Math.random() * 180;
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.4 + Math.random() * 0.3, color });
+  }
+}
+
+function update(dt) {
+  if (state !== 'play') return;
+  elapsed += dt;
+  // Gets faster over time so matches don't drag on
+  const speedMul = Math.min(4, 1 + elapsed / 25);
+  const h = SIZE / 2;
+
+  for (const p of players) {
+    p.x += p.vx * speedMul * dt;
+    p.y += p.vy * speedMul * dt;
+    if (p.x < h) { p.x = h; p.vx = Math.abs(p.vx); }
+    if (p.x > W - h) { p.x = W - h; p.vx = -Math.abs(p.vx); }
+    if (p.y < h) { p.y = h; p.vy = Math.abs(p.vy); }
+    if (p.y > H - h) { p.y = H - h; p.vy = -Math.abs(p.vy); }
+    p.angle += ORBIT_SPEED * p.spin * speedMul * dt;
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    p.flash = Math.max(0, p.flash - dt);
+  }
+
+  // Cube vs cube bounce (equal mass, elastic: swap velocity on the collision axis)
+  const [a, b] = players;
+  const ox = SIZE - Math.abs(a.x - b.x);
+  const oy = SIZE - Math.abs(a.y - b.y);
+  if (ox > 0 && oy > 0) {
+    if (ox < oy) {
+      const dir = a.x < b.x ? -1 : 1;
+      a.x += dir * ox / 2; b.x -= dir * ox / 2;
+      if ((b.x - a.x) * (b.vx - a.vx) < 0) [a.vx, b.vx] = [b.vx, a.vx];
+    } else {
+      const dir = a.y < b.y ? -1 : 1;
+      a.y += dir * oy / 2; b.y -= dir * oy / 2;
+      if ((b.y - a.y) * (b.vy - a.vy) < 0) [a.vy, b.vy] = [b.vy, a.vy];
+    }
+  }
+
+  // Spikes deal 1 damage to the other cube
+  for (let i = 0; i < 2; i++) {
+    const atk = players[i], tgt = players[1 - i];
+    if (atk.cooldown === 0 && spikeHits(atk, tgt)) {
+      tgt.hp = Math.max(0, tgt.hp - 1);
+      tgt.flash = 0.15;
+      atk.cooldown = HIT_COOLDOWN;
+      const sp = spikePos(atk);
+      burst(sp.x, sp.y, atk.color);
+    }
+  }
+
+  for (const pt of particles) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.life -= dt; }
+  particles = particles.filter(pt => pt.life > 0);
+
+  const dead = players.filter(p => p.hp <= 0);
+  if (dead.length) {
+    state = 'over';
+    const text = document.getElementById('winText');
+    if (dead.length === 2) { text.textContent = 'Draw!'; text.style.color = '#fff'; }
+    else {
+      const winner = players.find(p => p.hp > 0);
+      text.textContent = `${winner.name} wins!`;
+      text.style.color = winner.color;
+    }
+    setTimeout(() => document.getElementById('over').classList.remove('hidden'), 600);
+  }
+}
+
+function drawCube(p, ghost) {
+  const h = SIZE / 2;
+  ctx.globalAlpha = ghost ? 0.5 : 1;
+  ctx.fillStyle = p.flash > 0 ? '#ffb3b3' : '#fff';
+  ctx.fillRect(p.x - h, p.y - h, SIZE, SIZE);
+  ctx.globalAlpha = 1;
+
+  // name
+  ctx.font = 'bold 16px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillStyle = p.color;
+  ctx.fillText(p.name, p.x, p.y - h - 12);
+
+  // small hp bar above cube
+  const bw = SIZE + 10;
+  ctx.fillStyle = '#333';
+  ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw, 5);
+  ctx.fillStyle = p.color;
+  ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw * p.hp / MAX_HP, 5);
+}
+
+function drawSpike(p) {
+  const [t, l, r] = spikePoints(p);
+  ctx.fillStyle = p.color;
+  ctx.beginPath();
+  ctx.moveTo(t.x, t.y); ctx.lineTo(l.x, l.y); ctx.lineTo(r.x, r.y); ctx.closePath();
+  ctx.fill();
+  // faint orbit ring
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.beginPath(); ctx.arc(p.x, p.y, ORBIT, 0, Math.PI * 2); ctx.stroke();
+}
+
+function drawHud() {
+  const bw = Math.min(320, W / 2 - 40);
+  players.forEach((p, i) => {
+    const x = i === 0 ? 20 : W - 20 - bw;
+    ctx.fillStyle = '#222';
+    ctx.fillRect(x, 20, bw, 20);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(i === 0 ? x : x + bw * (1 - p.hp / MAX_HP), 20, bw * p.hp / MAX_HP, 20);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = i === 0 ? 'left' : 'right';
+    ctx.fillText(`${p.name}  ${p.hp} HP`, i === 0 ? x + 6 : x + bw - 6, 30);
+  });
+}
+
+function drawAimArrow(p) {
+  const dx = mouse.x - p.x, dy = mouse.y - p.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ex = p.x + dx / l * 110, ey = p.y + dy / l * 110;
+  ctx.strokeStyle = p.color; ctx.fillStyle = p.color; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+  const a = Math.atan2(dy, dx);
+  ctx.beginPath();
+  ctx.moveTo(ex + Math.cos(a) * 14, ey + Math.sin(a) * 14);
+  ctx.lineTo(ex + Math.cos(a + 2.5) * 14, ey + Math.sin(a + 2.5) * 14);
+  ctx.lineTo(ex + Math.cos(a - 2.5) * 14, ey + Math.sin(a - 2.5) * 14);
+  ctx.closePath(); ctx.fill();
+  ctx.lineWidth = 1;
+}
+
+function draw() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (state === 'menu') return;
+
+  for (const p of players) if (p.placed) { drawSpike(p); drawCube(p); }
+
+  if (state === 'place') {
+    const pos = clampPos(mouse.x, mouse.y);
+    drawCube({ ...players[placing], x: pos.x, y: pos.y }, true);
+  }
+  if (state === 'aim') drawAimArrow(players[placing]);
+
+  for (const pt of particles) {
+    ctx.globalAlpha = Math.max(0, pt.life * 2);
+    ctx.fillStyle = pt.color;
+    ctx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+
+  drawHud();
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+  // Sub-step so fast cubes and spikes don't skip through each other
+  for (let i = 0; i < 4; i++) update(dt / 4);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
