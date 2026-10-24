@@ -115,6 +115,7 @@
   .seg { display: flex; gap: 6px; }
   .seg button { flex: 1; }
   form { display: flex; flex-direction: column; gap: 10px; }
+  form.row { flex-direction: row; flex-wrap: nowrap; }
 
   /* ---------- Setup and game over ---------- */
   .overlay {
@@ -224,6 +225,7 @@ const FIREBASE_CONFIG = { apiKey: '', projectId: '' };
 
 const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the local emulator
 const ONLINE = !!(cfg.apiKey && cfg.projectId);
+const PRIVACY_URL = 'https://allo20206real.github.io/good-fun-game/privacy.html';
 
 // ---------- Small helpers ----------
 const $ = id => document.getElementById(id);
@@ -272,6 +274,7 @@ const AUTH_ERRORS = {
   TOKEN_EXPIRED: 'You were signed out. Log in again.',
   INVALID_REFRESH_TOKEN: 'You were signed out. Log in again.',
   USER_NOT_FOUND: 'You were signed out. Log in again.',
+  CREDENTIAL_TOO_OLD_LOGIN_AGAIN: 'Log out and log in again, then try once more.',
 };
 class GameError extends Error {}
 
@@ -480,9 +483,19 @@ const msToMidnight = () => { const n = new Date(); return new Date(n.getFullYear
 let auth1 = null, me = null;     // Player 1 (the person signed in on this device)
 let auth2 = null, p2me = null;   // Player 2 in a two-player match (this visit only)
 
+// Basic filter for names other players can see (display names, group names)
+const BLOCKED_WORDS = ['fuck', 'shit', 'bitch', 'cunt', 'pussy', 'nigg', 'fag', 'whore', 'slut', 'rape', 'nazi', 'asshole', 'retard', 'penis', 'vagina'];
+const isRude = s => { const t = s.toLowerCase().replace(/[^a-z]/g, ''); return BLOCKED_WORDS.some(w => t.includes(w)); };
+function cleanName(s, max) {
+  s = s.trim().slice(0, max);
+  if (!s) throw new GameError('Enter a name.');
+  if (isRude(s)) throw new GameError('Please pick a different name.');
+  return s;
+}
 function newUserDoc(email) {
+  const base = (email.split('@')[0] || 'Player').slice(0, 16);
   return {
-    name: (email.split('@')[0] || 'Player').slice(0, 16), score: START_SCORE, coins: START_COINS,
+    name: isRude(base) ? 'Player' : base, score: START_SCORE, coins: START_COINS,
     skins: FREE_SKINS.slice(), wins1p: 0, losses1p: 0, wins2p: 0, losses2p: 0, groups: [],
     daily: { day: '', progress: {}, claimed: [] }, streak: { last: '', count: 0 },
   };
@@ -676,7 +689,8 @@ $('tabBody').addEventListener('click', async e => {
   else if (act === 'copyCode') {
     try { await navigator.clipboard.writeText(b.dataset.code); toast('Code copied'); }
     catch { toast('Code: ' + b.dataset.code); }
-  } else if (act === 'logout') { logout1(); toast('Logged out'); renderApp(); }
+  } else if (act === 'logout') { logout1(); confirmDelete = false; toast('Logged out'); renderApp(); }
+  else if (act === 'askDelete' || act === 'cancelDelete') { confirmDelete = act === 'askDelete'; renderApp(); }
   else if (act === 'sound') { muted = !muted; store.set('bd.muted', muted); sfx(660); renderApp(); }
   else if (act === 'loadTop') loadTop();
 });
@@ -685,6 +699,7 @@ $('tabBody').addEventListener('submit', e => {
   const f = e.target;
   if (f.id === 'createGroupForm') busy(f.querySelector('button'), () => createGroup(f.querySelector('input').value), $('groupErr'));
   if (f.id === 'joinGroupForm') busy(f.querySelector('button'), () => joinGroup(f.querySelector('input').value), $('groupErr'));
+  if (f.id === 'deleteForm') busy(f.querySelector('button'), () => deleteAccount($('deletePass').value), $('deleteErr'));
   if (f.id === 'nameForm') busy(f.querySelector('button'), () => changeName(f.querySelector('input').value), $('nameErr'));
 });
 
@@ -850,12 +865,12 @@ async function loadTop() {
 }
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 async function createGroup(name) {
-  name = name.trim();
-  if (!name) throw new GameError('Give your group a name.');
+  if (!name.trim()) throw new GameError('Give your group a name.');
+  name = cleanName(name, 24);
   if (me.groups.length >= 10) throw new GameError('You can be in up to 10 groups.');
   for (let tries = 0; tries < 5; tries++) {
     const code = Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
-    try { await createDoc(auth1, 'groups/' + code, { name: name.slice(0, 24), owner: auth1.uid, members: [auth1.uid] }); }
+    try { await createDoc(auth1, 'groups/' + code, { name, owner: auth1.uid, members: [auth1.uid] }); }
     catch (e) { if (e.message === 'EXISTS') continue; throw e; }
     await mutateUser(auth1, d => { if (!d.groups.includes(code)) d.groups.push(code); });
     groupView = code; toast('Group created'); renderApp();
@@ -877,21 +892,25 @@ async function joinGroup(code) {
   await mutateUser(auth1, d => { if (!d.groups.includes(code)) d.groups.push(code); });
   groupView = code; toast(`Joined ${g.name}`); renderApp();
 }
-async function leaveGroup(code) {
+async function removeFromGroup(code) {
   const g = await getDoc(auth1, 'groups/' + code);
-  if (g) {
-    const rest = (g.members || []).filter(id => id !== auth1.uid);
-    if (!rest.length && g.owner === auth1.uid) await deleteDoc(auth1, 'groups/' + code);
-    else if (rest.length !== (g.members || []).length) await updateDoc(auth1, 'groups/' + code, { members: rest });
-  }
+  if (!g) return;
+  const rest = (g.members || []).filter(id => id !== auth1.uid);
+  if (!rest.length && g.owner === auth1.uid) await deleteDoc(auth1, 'groups/' + code);
+  else if (rest.length !== (g.members || []).length) await updateDoc(auth1, 'groups/' + code, { members: rest });
+}
+async function leaveGroup(code) {
+  await removeFromGroup(code);
   await mutateUser(auth1, d => { d.groups = d.groups.filter(c => c !== code); });
   groupView = null; toast('Left the group'); renderApp();
 }
 
 // ---------- Profile tab (log in / create account) ----------
 let profileMode = 'create';
+let confirmDelete = false;
 function profileTab() {
-  const sound = `<button class="ghost small" data-act="sound">Sound: ${muted ? 'off' : 'on'}</button>`;
+  const sound = `<div class="row between"><button class="ghost small" data-act="sound">Sound: ${muted ? 'off' : 'on'}</button>
+    <a class="fine" href="${PRIVACY_URL}" target="_blank" rel="noopener" style="color:var(--muted)">Privacy policy</a></div>`;
   if (!ONLINE) return `<div class="card"><h3>Account</h3><p>Online accounts aren't switched on for this copy of the game yet.</p></div>${sound}`;
   if (me) {
     return `
@@ -914,6 +933,13 @@ function profileTab() {
         </dl>
         <p class="fine">How score works: when a two-player match ends, the winner gains points equal to the HP they have left and the loser loses the same amount.</p>
         <button class="ghost" data-act="logout">Log out</button>
+        ${confirmDelete ? `<div class="card" style="border-color:var(--bad)">
+            <b>Delete your account?</b>
+            <p>This permanently deletes your account, coins, skins and score. It can't be undone.</p>
+            <form id="deleteForm"><label class="field">Enter your password to confirm <input id="deletePass" type="password" autocomplete="current-password"></label>
+            <p class="err" id="deleteErr"></p>
+            <div class="row"><button class="small" style="background:var(--bad);color:#fff">Delete forever</button><button type="button" class="small ghost" data-act="cancelDelete">Cancel</button></div></form>
+          </div>` : '<button class="link" style="color:var(--bad);align-self:flex-start" data-act="askDelete">Delete account</button>'}
       </div>${sound}`;
   }
   const creating = profileMode === 'create', resetting = profileMode === 'reset';
@@ -952,10 +978,20 @@ function wireProfile() {
     }, $('authErr'));
   };
 }
+async function deleteAccount(password) {
+  // Logging in again gives a fresh token, which Firebase requires before deleting an account
+  const sess = await signIn(auth1.email, password);
+  if (sess.uid !== auth1.uid) throw new GameError('Wrong email or password.');
+  auth1 = sess;
+  for (const code of me.groups) { try { await removeFromGroup(code); } catch {} }
+  await deleteDoc(sess, 'users/' + sess.uid);
+  await authPost('accounts:delete', { idToken: sess.idToken });
+  logout1(); confirmDelete = false;
+  toast('Your account was deleted'); renderApp();
+}
 async function changeName(name) {
-  name = name.trim();
-  if (!name) throw new GameError('Enter a name.');
-  await mutateUser(auth1, d => { d.name = name.slice(0, 16); });
+  name = cleanName(name, 16);
+  await mutateUser(auth1, d => { d.name = name; });
   toast('Name saved'); renderApp();
 }
 
@@ -1155,7 +1191,7 @@ function randomLoadout() {
 function startMatch() {
   mods = { ...BASE_MODS, ...(isEvent ? weekInfo().event.mods : {}) };
   resize();
-  const n = i => ($('name' + i) ? $('name' + i).value.trim() : '') || defaultName(i);
+  const n = i => { const v = $('name' + i) ? $('name' + i).value.trim() : ''; return v && !isRude(v) ? v : defaultName(i); };
   players = mode === '1p'
     ? [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)]
     : [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, n(1), loadouts[1], false)];

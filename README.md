@@ -66,7 +66,7 @@ Make a group and share its 6-character code. Friends join from the Groups tab, a
 
 ## Accounts and score
 
-Create an account with just an email and password on the **Profile** tab, then log in with the same details on any phone or computer. Forgot your password? Use "Forgot your password?" to get a reset email.
+Create an account with just an email and password on the **Profile** tab, then log in with the same details on any phone or computer. Forgot your password? Use "Forgot your password?" to get a reset email. You can delete your account any time from the Profile tab.
 
 - Every account starts with a score of **100** and **50 coins**.
 - When a two-player match ends, the winner **gains** points equal to the HP they have left and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all and you lose 100. The score can't go below 0.
@@ -77,3 +77,4 @@ Accounts are stored in Firebase. **See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) to
 
 - **On the web**: open `index.html` in a browser, or publish it with the included GitHub Pages workflow (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md)).
 - **On your phone**: the `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md).
+- **On the App Store**: the Expo app is set up for release. See [APP_STORE.md](APP_STORE.md) for how to build and submit it.

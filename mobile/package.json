@@ -20,7 +20,10 @@
     "start": "expo start",
     "android": "npm run sync-game && expo start --android",
     "ios": "npm run sync-game && expo start --ios",
-    "web": "npm run sync-game && expo start --web"
+    "web": "npm run sync-game && expo start --web",
+    "build:ios": "npm run sync-game && npx eas-cli@latest build --platform ios --profile production",
+    "submit:ios": "npx eas-cli@latest submit --platform ios --latest",
+    "release:ios": "npm run sync-game && npx eas-cli@latest build --platform ios --profile production --auto-submit"
   },
   "private": true
 }

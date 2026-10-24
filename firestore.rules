@@ -40,6 +40,9 @@ service cloud.firestore {
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && resource.data.coins - request.resource.data.coins >= 50));
+
+      // Players can delete their own account
+      allow delete: if signedIn() && request.auth.uid == uid;
     }
 
     // Friend groups. The doc id is the 6-character invite code.
