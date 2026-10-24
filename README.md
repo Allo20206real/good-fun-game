@@ -9,4 +9,8 @@ A 2-player game: two white cubes bounce around a black screen like the old DVD l
 - Both cubes start with 100 HP. The first to bring the other to 0 wins.
 - The cubes speed up over time so matches don't drag on.
 
-Open `index.html` in a browser to play.
+Open `index.html` in a browser to play (mouse or touch).
+
+## On your phone
+
+The `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md) for how to open it in Expo Go.
