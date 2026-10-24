@@ -12,7 +12,9 @@ export default function App() {
         <WebView
           style={styles.container}
           originWhitelist={['*']}
-          source={{ html: gameHtml }}
+          // A base URL gives the page its own origin, so accounts saved in localStorage persist
+          source={{ html: gameHtml, baseUrl: 'https://bounce-duel.local/' }}
+          domStorageEnabled
           scrollEnabled={false}
           bounces={false}
           overScrollMode="never"
