@@ -1,6 +1,6 @@
 # Bounce Duel
 
-A 2-player game: two white cubes bounce around a black screen like the old DVD logo.
+A 2-player game: two white cubes bounce around a square room in the middle of a black screen, like the old DVD logo.
 
 - Both players type a name, which is shown above their cube.
 - Each player clicks where their cube starts, then clicks again to pick the direction it bounces.

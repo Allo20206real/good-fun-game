@@ -31,7 +31,7 @@
   .p1 { color: #ff4d5e; }
   .p2 { color: #4da6ff; }
   #hint {
-    position: fixed; top: 64px; left: 0; right: 0; text-align: center; font-size: 20px;
+    position: fixed; top: 46px; left: 0; right: 0; text-align: center; font-size: 20px;
     pointer-events: none; text-shadow: 0 0 6px #000;
   }
 </style>
@@ -74,6 +74,7 @@ const MAX_HP = 100;
 const COLORS = ['#ff4d5e', '#4da6ff'];
 
 let W = 0, H = 0;
+let AX = 0, AY = 0, AS = 0; // the square room the cubes bounce in: left, top, side
 function resize() {
   W = canvas.width = window.innerWidth;
   H = canvas.height = window.innerHeight;
@@ -82,7 +83,11 @@ function resize() {
   ORBIT = 130 * scale;
   SPIKE_LEN = 34 * scale;
   SPIKE_W = 18 * scale;
-  BASE_SPEED = 260 * scale;
+  BASE_SPEED = 320 * scale;
+  // Half the screen's area, as a square in the middle (leaving room for the HP bars)
+  AS = Math.min(Math.sqrt(W * H / 2), W - 32, H - 120);
+  AX = (W - AS) / 2;
+  AY = (H - AS) / 2;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -134,7 +139,7 @@ function escapeHtml(s) {
 
 function clampPos(x, y) {
   const h = SIZE / 2;
-  return { x: Math.min(W - h, Math.max(h, x)), y: Math.min(H - h, Math.max(h, y)) };
+  return { x: Math.min(AX + AS - h, Math.max(AX + h, x)), y: Math.min(AY + AS - h, Math.max(AY + h, y)) };
 }
 
 canvas.addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
@@ -218,10 +223,10 @@ function update(dt) {
   for (const p of players) {
     p.x += p.vx * speedMul * dt;
     p.y += p.vy * speedMul * dt;
-    if (p.x < h) { p.x = h; p.vx = Math.abs(p.vx); }
-    if (p.x > W - h) { p.x = W - h; p.vx = -Math.abs(p.vx); }
-    if (p.y < h) { p.y = h; p.vy = Math.abs(p.vy); }
-    if (p.y > H - h) { p.y = H - h; p.vy = -Math.abs(p.vy); }
+    if (p.x < AX + h) { p.x = AX + h; p.vx = Math.abs(p.vx); }
+    if (p.x > AX + AS - h) { p.x = AX + AS - h; p.vx = -Math.abs(p.vx); }
+    if (p.y < AY + h) { p.y = AY + h; p.vy = Math.abs(p.vy); }
+    if (p.y > AY + AS - h) { p.y = AY + AS - h; p.vy = -Math.abs(p.vy); }
     p.angle += ORBIT_SPEED * p.spin * speedMul * dt;
     p.cooldown = Math.max(0, p.cooldown - dt);
     p.flash = Math.max(0, p.flash - dt);
@@ -340,6 +345,11 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (state === 'menu') return;
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(AX - 1, AY - 1, AS + 2, AS + 2);
+  ctx.lineWidth = 1;
 
   for (const p of players) if (p.placed) { drawSpike(p); drawCube(p); }
 
