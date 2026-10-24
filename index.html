@@ -6,8 +6,8 @@
 <title>Bounce Duel</title>
 <style>
   :root {
-    --bg: #000; --panel: #0d0d10; --line: #2a2a31; --text: #fff; --muted: #a3a3ad;
-    --p1: #ff4d5e; --p2: #4da6ff; --good: #4ade80; --bad: #ff4d5e;
+    --bg: #000; --panel: #0e0e12; --panel-2: #16161c; --line: #2a2a33; --text: #fff; --muted: #a3a3b0;
+    --p1: #ff4d5e; --p2: #4da6ff; --good: #4ade80; --bad: #ff4d5e; --coin: #ffcf3f; --event: #c084fc;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -18,82 +18,140 @@
   }
   canvas#c { display: block; touch-action: none; position: fixed; inset: 0; }
   .hidden { display: none !important; }
-
-  .overlay {
-    position: fixed; inset: 0; display: flex; overflow-y: auto; background: rgba(0,0,0,.88);
-    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  }
-  .inner { margin: auto; width: 100%; max-width: 760px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
-  h1 { margin: 0; font-size: clamp(36px, 9vw, 72px); letter-spacing: 3px; line-height: 1; text-wrap: balance; }
-  h2 { margin: 0; font-size: 20px; }
-  p { margin: 0; color: var(--muted); line-height: 1.5; max-width: 560px; }
-  .tagline { font-size: 15px; }
-  .menu { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); }
+  h1, h2, h3 { margin: 0; text-wrap: balance; }
+  p { margin: 0; color: var(--muted); line-height: 1.5; }
 
   button {
-    font: inherit; background: #fff; color: #000; border: 0; border-radius: 8px; padding: 13px 24px;
-    font-size: 18px; font-weight: 700; cursor: pointer;
+    font: inherit; background: #fff; color: #000; border: 0; border-radius: 10px; padding: 13px 22px;
+    font-size: 17px; font-weight: 700; cursor: pointer;
   }
-  button:hover { background: #ddd; }
+  button:hover { background: #e4e4e4; }
+  button:disabled { opacity: .45; cursor: default; }
   button:focus-visible, input:focus-visible { outline: 2px solid var(--p2); outline-offset: 2px; }
   button.ghost { background: transparent; color: #fff; border: 2px solid var(--line); }
   button.ghost:hover { border-color: #fff; }
-  button.small { padding: 8px 14px; font-size: 14px; }
+  button.small { padding: 8px 14px; font-size: 14px; border-radius: 8px; }
+  button.coin-btn { background: var(--coin); color: #1a1200; }
+  button.event-btn { background: var(--event); color: #12001f; }
   button.link { background: none; color: var(--p2); padding: 0; font-size: inherit; font-weight: 600; text-decoration: underline; border-radius: 0; }
 
-  .acct-line { font-size: 14px; color: var(--muted); }
-  .acct-line b { color: #fff; }
-
   input {
-    font: inherit; background: #111; color: #fff; border: 2px solid #3a3a42; border-radius: 8px;
+    font: inherit; background: #111; color: #fff; border: 2px solid #3a3a44; border-radius: 10px;
     padding: 10px 12px; font-size: 17px; width: 100%; outline: none; -webkit-user-select: text; user-select: text;
   }
   input:focus { border-color: #fff; }
+  label.field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
 
-  /* Setup screen */
+  .coin { display: inline-block; width: .9em; height: .9em; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, var(--coin) 55%, #b88700); vertical-align: -0.1em; margin-right: .25em; box-shadow: 0 0 0 1px #7a5a00 inset; }
+  .err { color: var(--bad); font-size: 14px; min-height: 1.4em; }
+  .ok { color: var(--good); }
+  .fine { font-size: 12px; color: var(--muted); }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+
+  /* ---------- App shell with tabs ---------- */
+  .screen { position: fixed; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { font-weight: 900; letter-spacing: 3px; font-size: 18px; white-space: nowrap; }
+  .wallet { display: flex; gap: 8px; align-items: center; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 0; }
+  .pill { background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 10px; white-space: nowrap; }
+  #tabBody { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); }
+  .tab-inner { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); background: #08080b;
+    padding: 6px max(8px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  }
+  .tabbar button {
+    background: none; color: var(--muted); padding: 6px 2px; border-radius: 8px; font-size: 11px; font-weight: 600;
+    display: flex; flex-direction: column; align-items: center; gap: 3px; position: relative;
+  }
+  .tabbar button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .tabbar button.on { color: #fff; }
+  .tabbar button:hover { background: var(--panel-2); }
+  .badge { position: absolute; top: 2px; right: calc(50% - 20px); width: 9px; height: 9px; border-radius: 50%; background: var(--coin); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .card.event { border-color: #4b2a6e; background: linear-gradient(160deg, #1b0f2b, var(--panel) 60%); }
+  .card.reward { border-color: #5c4a10; background: linear-gradient(160deg, #241c05, var(--panel) 60%); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row.between { justify-content: space-between; }
+  .grow { flex: 1; min-width: 0; }
+  .big-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .big-buttons button { padding: 18px 12px; font-size: 18px; }
+  .hero { text-align: center; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
+  .hero h1 { font-size: clamp(34px, 9vw, 60px); letter-spacing: 3px; line-height: 1; font-weight: 900; }
+  .timer { font-variant-numeric: tabular-nums; font-weight: 700; color: #fff; }
+
+  .challenge { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .challenge:first-of-type { border-top: 0; padding-top: 0; }
+  .bar { height: 8px; border-radius: 999px; background: #22222a; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--good); border-radius: 999px; }
+
+  .shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .skin-card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; position: relative; }
+  .skin-card canvas { width: 72px; height: 72px; }
+  .skin-card .tag { position: absolute; top: 8px; left: 8px; font-size: 10px; font-weight: 800; letter-spacing: 1px; background: var(--event); color: #12001f; padding: 3px 6px; border-radius: 6px; }
+  .skin-card button { width: 100%; }
+  .price s { color: var(--muted); font-weight: 400; margin-right: 4px; }
+
+  .lb { display: flex; flex-direction: column; }
+  .lb-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+  .lb-row:first-child { border-top: 0; }
+  .lb-row .rank { color: var(--muted); font-weight: 700; text-align: right; }
+  .lb-row .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-row .meta { font-size: 12px; color: var(--muted); }
+  .lb-row.me .name { color: var(--coin); }
+  .code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 22px; font-weight: 800; letter-spacing: 4px; -webkit-user-select: text; user-select: text; }
+  .group-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid var(--line); color: #fff; text-align: left; padding: 12px 14px; }
+  .group-item:hover { background: #1e1e26; }
+
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 15px; margin: 0; }
+  .stats dt { color: var(--muted); }
+  .stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .big-num { font-size: 40px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; }
+  form { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ---------- Setup and game over ---------- */
+  .overlay {
+    position: fixed; inset: 0; display: flex; overflow-y: auto; background: rgba(0,0,0,.9);
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .inner { margin: auto; width: 100%; max-width: 780px; display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+  .menu { display: flex; flex-direction: column; gap: 10px; width: min(320px, 100%); }
   #panels { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; width: 100%; }
   .panel {
     flex: 1 1 320px; max-width: 370px; min-width: 0; background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; text-align: left;
+    border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; text-align: left;
   }
   .panel-head { display: flex; align-items: center; gap: 12px; }
-  .preview { width: 120px; height: 120px; flex: none; background: #000; border-radius: 8px; border: 1px solid var(--line); }
+  .preview { width: 120px; height: 120px; flex: none; background: #000; border-radius: 10px; border: 1px solid var(--line); }
   .panel-head .who { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
   .acct { font-size: 13px; color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
   .acct b { color: #fff; }
   .acct details summary { cursor: pointer; color: var(--p2); font-weight: 600; }
-  .acct .mini-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
-  .acct .mini-form input { font-size: 16px; padding: 8px 10px; }
-  .acct .row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mini-form { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .mini-form input { font-size: 16px; padding: 8px 10px; }
   .pick > span { display: block; font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
-    background: #17171c; color: #fff; border: 2px solid #2c2c34; border-radius: 999px; padding: 6px 12px;
+    background: #17171d; color: #fff; border: 2px solid #2c2c35; border-radius: 999px; padding: 6px 12px;
     font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
   }
-  .chip:hover { background: #22222a; }
+  .chip:hover { background: #22222b; }
   .chip.on { border-color: #fff; background: #fff; color: #000; }
-  .chip.locked { opacity: .45; cursor: not-allowed; }
   .chip canvas { width: 16px; height: 16px; border-radius: 3px; }
   .desc { font-size: 13px; margin-top: 6px; min-height: 1.5em; }
-  .err { color: var(--bad); font-size: 14px; min-height: 1.4em; }
-  .ok { color: var(--good); }
-
-  /* Account screen */
-  .card { width: min(380px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
-  .tabs { display: flex; gap: 6px; }
-  .tabs button { flex: 1; }
-  form { display: flex; flex-direction: column; gap: 10px; }
-  form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
-  .stats { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; font-size: 15px; }
-  .stats dt { color: var(--muted); }
-  .stats dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
-  .big-score { font-size: 44px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
-  .fine { font-size: 12px; color: var(--muted); }
-
-  #results { display: flex; flex-direction: column; gap: 6px; font-size: 16px; }
-  #results .up { color: var(--good); }
-  #results .down { color: var(--bad); }
+  .event-flag { background: var(--event); color: #12001f; font-weight: 800; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+  #winText { font-size: clamp(36px, 9vw, 64px); font-weight: 900; }
+  #results { display: flex; flex-direction: column; gap: 8px; font-size: 16px; width: min(420px, 100%); }
+  #results .line { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; text-align: left; }
+  .up { color: var(--good); }
+  .down { color: var(--bad); }
 
   #hint {
     position: fixed; top: calc(48px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 18px;
@@ -103,167 +161,250 @@
     position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
     width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 16px; background: #1a1a1f; color: #fff; border: 1px solid #333;
   }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(90px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: #fff; color: #000; font-weight: 700; padding: 10px 16px; border-radius: 999px; z-index: 50;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5); pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); text-align: center;
+  }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="hint" class="hidden"></div>
 <button id="quitBtn" class="hidden" aria-label="Back to menu">✕</button>
+<div id="toast" class="hidden"></div>
 
-<!-- Home -->
-<div id="home" class="overlay">
-  <div class="inner">
-    <h1>BOUNCE DUEL</h1>
-    <p class="tagline">Two cubes bounce around a square room. Spikes orbit each cube and every hit does 1 damage. Use your power at the right moment. First to 0 HP loses.</p>
-    <div class="acct-line" id="homeAcct"></div>
-    <div class="menu">
-      <button data-go="setup1p">Single player</button>
-      <button data-go="setup2p">Two players</button>
-      <button class="ghost" data-go="account">Account</button>
-      <button class="ghost" id="soundBtn"></button>
-    </div>
-  </div>
+<!-- Main app with tabs -->
+<div id="app" class="screen">
+  <header class="topbar">
+    <div class="brand">BOUNCE DUEL</div>
+    <div class="wallet" id="wallet"></div>
+  </header>
+  <main id="tabBody"></main>
+  <nav class="tabbar" id="tabbar">
+    <button data-tab="play"><svg viewBox="0 0 24 24"><polygon points="7 4 20 12 7 20 7 4"/></svg>Play</button>
+    <button data-tab="events"><svg viewBox="0 0 24 24"><polygon points="12 3 14.8 8.8 21 9.6 16.5 13.9 17.6 20.1 12 17.1 6.4 20.1 7.5 13.9 3 9.6 9.2 8.8 12 3"/></svg>Events</button>
+    <button data-tab="shop"><svg viewBox="0 0 24 24"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>Shop</button>
+    <button data-tab="groups"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M15.5 14.2c3 .2 5.5 2.6 5.5 5.8"/></svg>Groups</button>
+    <button data-tab="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>Profile</button>
+  </nav>
 </div>
 
-<!-- Setup -->
+<!-- Match setup -->
 <div id="setup" class="overlay hidden">
   <div class="inner">
     <h2 id="setupTitle"></h2>
+    <div id="setupEvent"></div>
     <div id="panels"></div>
     <div class="menu">
       <button id="startBtn">Start</button>
-      <button class="ghost" data-go="home">Back</button>
+      <button class="ghost" id="setupBack">Back</button>
     </div>
-  </div>
-</div>
-
-<!-- Account -->
-<div id="account" class="overlay hidden">
-  <div class="inner">
-    <h2>Account</h2>
-    <div class="card" id="accountCard"></div>
-    <button class="ghost" data-go="home">Back</button>
   </div>
 </div>
 
 <!-- Game over -->
 <div id="over" class="overlay hidden">
   <div class="inner">
-    <h1 id="winText"></h1>
+    <div id="winText"></div>
     <div id="results"></div>
     <div class="menu">
       <button id="againBtn">Rematch</button>
-      <button class="ghost" data-go="home">Menu</button>
+      <button class="ghost" id="overMenu">Menu</button>
     </div>
   </div>
 </div>
 
 <script>
-// ---------- Storage (falls back to memory if localStorage is blocked) ----------
-const store = (() => {
-  const mem = {};
-  return {
-    get(k, d) {
-      try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }
-      catch { return k in mem ? mem[k] : d; }
-    },
-    set(k, v) {
-      mem[k] = v;
-      try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
-    },
-  };
-})();
+// ============================================================================
+// Firebase settings. Fill these in from your Firebase project (FIREBASE_SETUP.md).
+// ============================================================================
+const FIREBASE_CONFIG = { apiKey: '', projectId: '' };
 
-// ---------- SHA-256 (for hashing passwords before they're saved) ----------
-const sha256 = (() => {
-  const isPrime = n => { for (let i = 2; i * i <= n; i++) if (n % i === 0) return false; return true; };
-  const primes = []; for (let n = 2; primes.length < 64; n++) if (isPrime(n)) primes.push(n);
-  const K = primes.map(p => (Math.cbrt(p) % 1) * 2 ** 32 | 0);
-  const H0 = primes.slice(0, 8).map(p => (Math.sqrt(p) % 1) * 2 ** 32 | 0);
-  const ror = (x, n) => (x >>> n) | (x << (32 - n));
-  return str => {
-    const bytes = new TextEncoder().encode(str);
-    const buf = new Uint8Array(((bytes.length + 9 + 63) >> 6) << 6);
-    buf.set(bytes); buf[bytes.length] = 0x80;
-    const dv = new DataView(buf.buffer);
-    const bits = bytes.length * 8;
-    dv.setUint32(buf.length - 8, Math.floor(bits / 2 ** 32));
-    dv.setUint32(buf.length - 4, bits >>> 0);
-    const H = H0.slice(), w = new Uint32Array(64);
-    for (let i = 0; i < buf.length; i += 64) {
-      for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
-      for (let t = 16; t < 64; t++) {
-        const x = w[t - 15], y = w[t - 2];
-        w[t] = (w[t - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[t - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10))) | 0;
-      }
-      let [a, b, c, d, e, f, g, h] = H;
-      for (let t = 0; t < 64; t++) {
-        const t1 = (h + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + K[t] + w[t]) | 0;
-        const t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
-        h = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
-      }
-      [a, b, c, d, e, f, g, h].forEach((v, j) => { H[j] = (H[j] + v) | 0; });
-    }
-    return H.map(x => (x >>> 0).toString(16).padStart(8, '0')).join('');
-  };
-})();
+const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the local emulator
+const ONLINE = !!(cfg.apiKey && cfg.projectId);
 
-// ---------- Accounts (saved on this device) ----------
-const START_SCORE = 100;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function hashPassword(password, salt) {
-  let h = salt + ':' + password;
-  for (let i = 0; i < 500; i++) h = sha256(h + salt);
-  return h;
+// ---------- Small helpers ----------
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
-function accounts() { return store.get('bd.accounts', {}); }
-function saveAccount(email, data) { const all = accounts(); all[email] = data; store.set('bd.accounts', all); }
-function getAccount(email) { return email ? accounts()[email] || null : null; }
+let toastTimer = 0;
+function toast(msg) {
+  const t = $('toast');
+  t.textContent = msg; t.classList.remove('hidden'); t.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.opacity = 0; setTimeout(() => t.classList.add('hidden'), 200); }, 2200);
+}
+const coinHtml = n => `<span class="coin"></span>${n}`;
+function dayKey(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function fmtLeft(ms) {
+  if (ms <= 0) return 'now';
+  const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60), mm = m % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${mm}m`;
+  return `${mm}m ${Math.floor((ms % 60000) / 1000)}s`;
+}
 
-function validate(email, password) {
-  if (!EMAIL_RE.test(email)) return 'Enter a valid email address.';
-  if (password.length < 6) return 'Password must be at least 6 characters.';
+// ============================================================================
+// Firebase (Authentication + Firestore over their REST APIs)
+// ============================================================================
+const AUTH_ERRORS = {
+  EMAIL_EXISTS: 'An account with this email already exists. Log in instead.',
+  INVALID_LOGIN_CREDENTIALS: 'Wrong email or password.',
+  INVALID_PASSWORD: 'Wrong email or password.',
+  EMAIL_NOT_FOUND: 'Wrong email or password.',
+  WEAK_PASSWORD: 'Password must be at least 6 characters.',
+  INVALID_EMAIL: 'Enter a valid email address.',
+  MISSING_EMAIL: 'Enter your email address.',
+  MISSING_PASSWORD: 'Enter your password.',
+  TOO_MANY_ATTEMPTS_TRY_LATER: 'Too many attempts. Try again in a few minutes.',
+  USER_DISABLED: 'This account has been disabled.',
+  OPERATION_NOT_ALLOWED: 'Email/password sign-in is not turned on in Firebase yet.',
+  CONFIGURATION_NOT_FOUND: 'Firebase Authentication is not set up for this game yet.',
+  TOKEN_EXPIRED: 'You were signed out. Log in again.',
+  INVALID_REFRESH_TOKEN: 'You were signed out. Log in again.',
+  USER_NOT_FOUND: 'You were signed out. Log in again.',
+};
+class GameError extends Error {}
+
+const authBase = svc => (cfg.authHost ? `${cfg.authHost}/` : 'https://') + svc;
+const docsBase = () => `${cfg.firestoreHost || 'https://firestore.googleapis.com'}/v1/projects/${cfg.projectId}/databases/(default)/documents`;
+const docName = path => `projects/${cfg.projectId}/databases/(default)/documents/${path}`;
+
+async function request(url, opts) {
+  let res;
+  try { res = await fetch(url, opts); }
+  catch { throw new GameError("Can't reach the account server. Check your internet connection."); }
+  const body = await res.json().catch(() => ({}));
+  return { res, body };
+}
+
+async function authPost(path, payload) {
+  const { res, body } = await request(`${authBase('identitytoolkit.googleapis.com')}/v1/${path}?key=${cfg.apiKey}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const code = String(body.error?.message || '').split(/[\s:]/)[0];
+    if (/API key/i.test(body.error?.message || '')) throw new GameError("The game's Firebase key isn't valid.");
+    throw new GameError(AUTH_ERRORS[code] || 'Something went wrong. Try again.');
+  }
+  return body;
+}
+
+function makeSession(b) {
+  return { uid: b.localId || b.user_id, email: b.email, idToken: b.idToken || b.id_token, refreshToken: b.refreshToken || b.refresh_token,
+           expires: Date.now() + Number(b.expiresIn || b.expires_in || 3600) * 1000 };
+}
+async function signUp(email, password) {
+  return makeSession(await authPost('accounts:signUp', { email: email.trim(), password, returnSecureToken: true }));
+}
+async function signIn(email, password) {
+  return makeSession(await authPost('accounts:signInWithPassword', { email: email.trim(), password, returnSecureToken: true }));
+}
+async function sendReset(email) {
+  await authPost('accounts:sendOobCode', { requestType: 'PASSWORD_RESET', email: email.trim() });
+}
+async function idToken(sess) {
+  if (Date.now() > sess.expires - 60000) {
+    const { res, body } = await request(`${authBase('securetoken.googleapis.com')}/v1/token?key=${cfg.apiKey}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(sess.refreshToken),
+    });
+    if (!res.ok) throw new GameError(AUTH_ERRORS[body.error?.message] || 'You were signed out. Log in again.');
+    Object.assign(sess, makeSession({ ...body, email: sess.email }));
+    if (sess === auth1) store.set('bd.auth', { uid: sess.uid, email: sess.email, refreshToken: sess.refreshToken });
+  }
+  return sess.idToken;
+}
+
+// Firestore values <-> plain JS
+function toValue(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'boolean') return { booleanValue: v };
+  if (typeof v === 'number') return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string') return { stringValue: v };
+  if (Array.isArray(v)) return { arrayValue: { values: v.map(toValue) } };
+  return { mapValue: { fields: toFields(v) } };
+}
+function toFields(o) { const f = {}; for (const k of Object.keys(o)) f[k] = toValue(o[k]); return f; }
+function fromValue(v) {
+  if ('integerValue' in v) return Number(v.integerValue);
+  if ('doubleValue' in v) return Number(v.doubleValue);
+  if ('stringValue' in v) return v.stringValue;
+  if ('booleanValue' in v) return v.booleanValue;
+  if ('arrayValue' in v) return (v.arrayValue.values || []).map(fromValue);
+  if ('mapValue' in v) return fromFields(v.mapValue.fields || {});
+  if ('timestampValue' in v) return v.timestampValue;
   return null;
 }
-function createAccount(email, password) {
-  email = email.trim().toLowerCase();
-  const err = validate(email, password);
-  if (err) return { err };
-  if (getAccount(email)) return { err: 'An account with this email already exists. Log in instead.' };
-  const salt = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-  saveAccount(email, { salt, hash: hashPassword(password, salt), score: START_SCORE, wins1p: 0, losses1p: 0, wins2p: 0, losses2p: 0 });
-  return { email };
+function fromFields(f) { const o = {}; for (const k of Object.keys(f || {})) o[k] = fromValue(f[k]); return o; }
+
+async function fs(sess, method, path, { body, query = '' } = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (sess) headers.Authorization = 'Bearer ' + await idToken(sess);
+  const { res, body: out } = await request(`${docsBase()}${path}${query}`, { method, headers, body: body && JSON.stringify(body) });
+  if (res.status === 404 && method === 'GET') return null;
+  if (!res.ok) {
+    const st = out.error?.status;
+    if (st === 'PERMISSION_DENIED') throw new GameError('The server refused that change.');
+    if (st === 'FAILED_PRECONDITION' || st === 'ALREADY_EXISTS') throw new GameError('EXISTS');
+    if (st === 'NOT_FOUND') throw new GameError('The game database is not set up yet.');
+    throw new GameError('Something went wrong saving. Try again.');
+  }
+  return out;
 }
-function checkLogin(email, password) {
-  email = email.trim().toLowerCase();
-  const acct = getAccount(email);
-  if (!acct || hashPassword(password, acct.salt) !== acct.hash) return { err: 'Wrong email or password.' };
-  return { email };
+async function getDoc(sess, path) {
+  const d = await fs(sess, 'GET', '/' + path);
+  return d && d.fields !== undefined ? fromFields(d.fields) : d ? {} : null;
+}
+async function createDoc(sess, path, data) {
+  await fs(sess, 'PATCH', '/' + path, { body: { fields: toFields(data) }, query: '?currentDocument.exists=false' });
+}
+async function updateDoc(sess, path, data) {
+  const mask = Object.keys(data).map(k => 'updateMask.fieldPaths=' + encodeURIComponent(k)).join('&');
+  await fs(sess, 'PATCH', '/' + path, { body: { fields: toFields(data) }, query: '?currentDocument.exists=true&' + mask });
+}
+async function deleteDoc(sess, path) { await fs(sess, 'DELETE', '/' + path); }
+async function getMany(sess, paths) {
+  if (!paths.length) return [];
+  const out = await fs(sess, 'POST', ':batchGet', { body: { documents: paths.map(docName) } });
+  return out.filter(r => r.found).map(r => ({ id: r.found.name.split('/').pop(), ...fromFields(r.found.fields) }));
+}
+async function topPlayers(sess, limit = 25) {
+  const out = await fs(sess, 'POST', ':runQuery', { body: { structuredQuery: {
+    from: [{ collectionId: 'users' }], orderBy: [{ field: { fieldPath: 'score' }, direction: 'DESCENDING' }], limit,
+  } } });
+  return out.filter(r => r.document).map(r => ({ id: r.document.name.split('/').pop(), ...fromFields(r.document.fields) }));
 }
 
-let session = store.get('bd.session', null);   // Player 1's account
-if (session && !getAccount(session)) session = null;
-let p2Account = null;                           // Player 2 signs in per visit
-let guestWins = 0;                              // single-player wins for guests (not saved)
-
-function winsFor(email) { const a = getAccount(email); return a ? a.wins1p : guestWins; }
-
-// ---------- Game data ----------
+// ============================================================================
+// Game data
+// ============================================================================
 const COLORS = ['#ff4d5e', '#4da6ff'];
-const MAX_HP = 100;
 const HIT_COOLDOWN = 0.02;
+const START_SCORE = 100, START_COINS = 50;
 
 const SKINS = [
-  { id: 'classic', name: 'Classic', wins: 0 },
-  { id: 'checker', name: 'Checker', wins: 0 },
-  { id: 'neon', name: 'Neon', wins: 1 },
-  { id: 'ice', name: 'Ice', wins: 2 },
-  { id: 'lava', name: 'Lava', wins: 3 },
-  { id: 'gold', name: 'Gold', wins: 5 },
-  { id: 'galaxy', name: 'Galaxy', wins: 8 },
-  { id: 'rainbow', name: 'Rainbow', wins: 12 },
+  { id: 'classic', name: 'Classic', price: 0 },
+  { id: 'checker', name: 'Checker', price: 0 },
+  { id: 'neon', name: 'Neon', price: 100 },
+  { id: 'ice', name: 'Ice', price: 150 },
+  { id: 'candy', name: 'Candy', price: 200 },
+  { id: 'lava', name: 'Lava', price: 250 },
+  { id: 'void', name: 'Void', price: 300 },
+  { id: 'gold', name: 'Gold', price: 450 },
+  { id: 'galaxy', name: 'Galaxy', price: 650 },
+  { id: 'rainbow', name: 'Rainbow', price: 1000 },
 ];
+const FREE_SKINS = SKINS.filter(s => !s.price).map(s => s.id);
 const SPIKES = {
   classic: { name: 'Classic', desc: 'One sharp spike. Balanced.', count: 1, kind: 'tri', len: 36, w: 18, spin: 4.5, orbit: 1 },
   twin:    { name: 'Twin', desc: 'Two smaller spikes on opposite sides, spinning slower.', count: 2, kind: 'tri', len: 22, w: 12, spin: 2.6, orbit: 1, hitCd: 0.03 },
@@ -280,21 +421,134 @@ const POWERS = {
   blink:  { name: 'Blink', desc: 'Teleport right next to the other cube.', cd: 6, color: '#c084fc' },
 };
 const DIFFICULTIES = {
-  easy:   { name: 'Easy', desc: 'Uses its power at random.', think: 0.6, smart: 0.35 },
-  normal: { name: 'Normal', desc: 'Uses its power when it makes sense.', think: 0.3, smart: 0.8 },
-  hard:   { name: 'Hard', desc: 'Reacts instantly and never wastes its power.', think: 0, smart: 1 },
+  easy:   { name: 'Easy', desc: 'Uses its power at random.', think: 0.6, smart: 0.35, coins: 10 },
+  normal: { name: 'Normal', desc: 'Uses its power when it makes sense.', think: 0.3, smart: 0.8, coins: 20 },
+  hard:   { name: 'Hard', desc: 'Reacts instantly and never wastes its power.', think: 0, smart: 1, coins: 35 },
 };
 
-// ---------- Canvas & layout ----------
-const canvas = document.getElementById('c');
+// Weekly events rotate every Monday
+const EVENTS = [
+  { id: 'frenzy', name: 'Speed Frenzy', desc: 'Cubes start 60% faster.', mods: { speed: 1.6 }, sale: 'lava' },
+  { id: 'chaos', name: 'Power Chaos', desc: 'Powers recharge 3 times faster.', mods: { powerRate: 3 }, sale: 'neon' },
+  { id: 'giant', name: 'Giant Spikes', desc: 'Every spike is 60% bigger.', mods: { spikeScale: 1.6 }, sale: 'gold' },
+  { id: 'tiny', name: 'Tiny Room', desc: 'The room is 30% smaller.', mods: { room: 0.7 }, sale: 'ice' },
+  { id: 'sudden', name: 'Sudden Death', desc: 'Both cubes start with only 30 HP.', mods: { hp: 30 }, sale: 'void' },
+  { id: 'rush', name: 'Coin Rush', desc: 'Every match pays double coins all week.', mods: {}, coinRush: true, sale: 'galaxy' },
+];
+const BASE_MODS = { speed: 1, powerRate: 1, spikeScale: 1, room: 1, hp: 100 };
+function weekInfo(now = new Date()) {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const idx = Math.round((monday - new Date(2024, 0, 1)) / (7 * 864e5));
+  const n = EVENTS.length;
+  return { event: EVENTS[((idx % n) + n) % n], next: EVENTS[(((idx + 1) % n) + n) % n],
+           ends: new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7).getTime() };
+}
+const salePrice = skin => (weekInfo().event.sale === skin.id ? Math.round(skin.price / 2) : skin.price);
+
+// Daily challenges: three picked from the pool by date, the same for everyone
+const CHALLENGE_POOL = [
+  { id: 'play5', text: 'Play 5 matches', metric: 'play', target: 5, reward: 30 },
+  { id: 'win1p2', text: 'Win 2 single-player games', metric: 'win1p', target: 2, reward: 40 },
+  { id: 'winHard', text: 'Beat the CPU on Hard', metric: 'winHard', target: 1, reward: 60 },
+  { id: 'dmg300', text: 'Deal 300 damage', metric: 'damage', target: 300, reward: 40 },
+  { id: 'power15', text: 'Use your power 15 times', metric: 'power', target: 15, reward: 30 },
+  { id: 'win2p', text: 'Win a two-player match', metric: 'win2p', target: 1, reward: 50 },
+  { id: 'bigwin', text: 'Win with 50 HP or more left', metric: 'bigwin', target: 1, reward: 50 },
+  { id: 'event2', text: 'Play 2 event matches', metric: 'eventplay', target: 2, reward: 40 },
+  { id: 'spike', text: '', metric: '', target: 1, reward: 40 },
+];
+function seeded(str) {
+  let h = 2166136261;
+  for (const ch of str) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  return () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); h ^= h >>> 16; return (h >>> 0) / 4294967296; };
+}
+function dailyChallenges(day = dayKey()) {
+  const rnd = seeded(day);
+  const pool = CHALLENGE_POOL.slice().sort(() => rnd() - 0.5).slice(0, 3);
+  return pool.map(c => {
+    if (c.id !== 'spike') return c;
+    const ids = Object.keys(SPIKES), sp = ids[Math.floor(rnd() * ids.length)];
+    return { ...c, id: 'win_' + sp, text: `Win a game with the ${SPIKES[sp].name} spike`, metric: 'win_' + sp };
+  });
+}
+const streakReward = count => 20 + 10 * Math.min(Math.max(count, 1) - 1, 6);
+const msToMidnight = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1) - n; };
+
+// ============================================================================
+// Accounts
+// ============================================================================
+let auth1 = null, me = null;     // Player 1 (the person signed in on this device)
+let auth2 = null, p2me = null;   // Player 2 in a two-player match (this visit only)
+
+function newUserDoc(email) {
+  return {
+    name: (email.split('@')[0] || 'Player').slice(0, 16), score: START_SCORE, coins: START_COINS,
+    skins: FREE_SKINS.slice(), wins1p: 0, losses1p: 0, wins2p: 0, losses2p: 0, groups: [],
+    daily: { day: '', progress: {}, claimed: [] }, streak: { last: '', count: 0 },
+  };
+}
+function normalizeUser(d) {
+  d.skins = d.skins || FREE_SKINS.slice(); d.groups = d.groups || [];
+  d.daily = d.daily || { day: '', progress: {}, claimed: [] };
+  d.daily.progress = d.daily.progress || {}; d.daily.claimed = d.daily.claimed || [];
+  d.streak = d.streak || { last: '', count: 0 };
+  for (const k of ['score', 'coins', 'wins1p', 'losses1p', 'wins2p', 'losses2p']) d[k] = d[k] || 0;
+  return d;
+}
+async function loadOrCreateUser(sess) {
+  let d = await getDoc(sess, 'users/' + sess.uid);
+  if (!d) {
+    d = newUserDoc(sess.email || '');
+    try { await createDoc(sess, 'users/' + sess.uid, d); }
+    catch (e) { if (e.message !== 'EXISTS') throw e; d = await getDoc(sess, 'users/' + sess.uid); }
+  }
+  return normalizeUser(d);
+}
+// Read the latest copy, change it, save it back (keeps two devices from overwriting each other)
+async function mutateUser(sess, fn) {
+  const d = normalizeUser(await getDoc(sess, 'users/' + sess.uid) || await loadOrCreateUser(sess));
+  fn(d);
+  const { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak } = d;
+  await updateDoc(sess, 'users/' + sess.uid, { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak });
+  if (sess === auth1) me = d;
+  if (sess === auth2) p2me = d;
+  return d;
+}
+function rollDaily(d) {
+  const today = dayKey();
+  if (d.daily.day !== today) d.daily = { day: today, progress: {}, claimed: [] };
+}
+function login1(sess, doc) {
+  auth1 = sess; me = doc;
+  store.set('bd.auth', { uid: sess.uid, email: sess.email, refreshToken: sess.refreshToken });
+}
+function logout1() { auth1 = null; me = null; store.set('bd.auth', null); }
+
+async function restoreSession() {
+  const saved = store.get('bd.auth', null);
+  if (!ONLINE || !saved?.refreshToken) return;
+  const sess = { uid: saved.uid, email: saved.email, refreshToken: saved.refreshToken, idToken: '', expires: 0 };
+  try {
+    auth1 = sess;
+    me = await loadOrCreateUser(sess);
+  } catch (e) {
+    auth1 = null; me = null;
+    if (/signed out/.test(e.message)) store.set('bd.auth', null);
+  }
+}
+
+// ============================================================================
+// Canvas & layout
+// ============================================================================
+const canvas = $('c');
 const ctx = canvas.getContext('2d');
-const hint = document.getElementById('hint');
-const $ = id => document.getElementById(id);
+const hint = $('hint');
 
 let W = 0, H = 0, DPR = 1;
 let U = 1;                       // size scale for the current screen
 let AX = 0, AY = 0, AS = 0;      // the square room: left, top, side
 let buttons = [];                // power buttons: {x, y, r}
+let mods = { ...BASE_MODS };     // event rules for the current match
 
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -303,7 +557,7 @@ function resize() {
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   U = Math.max(0.55, Math.min(1, Math.min(W, H) / 720));
   // Half the screen's area, as a square in the middle (leaving room for the HP bars)
-  AS = Math.min(Math.sqrt(W * H / 2), W - 32, H - 120);
+  AS = Math.min(Math.sqrt(W * H / 2), W - 32, H - 120) * mods.room;
   AX = (W - AS) / 2;
   AY = (H - AS) / 2;
   const r = Math.max(30, 44 * U);
@@ -315,21 +569,26 @@ resize();
 const unit = p => p.unit || U;
 const sizeOf = p => 64 * unit(p);
 const orbitOf = p => 130 * unit(p);
-const baseSpeed = () => 320 * U;
+const baseSpeed = () => 320 * U * mods.speed;
 
-// ---------- State ----------
-let mode = '1p';            // 1p | 2p
+// ============================================================================
+// State
+// ============================================================================
+let tab = 'play';
+let groupView = null;        // group code being viewed in the Groups tab
+let mode = '1p';             // 1p | 2p
+let isEvent = false;
 let difficulty = store.get('bd.difficulty', 'normal');
 let loadouts = store.get('bd.loadouts', [
   { skin: 'classic', spike: 'classic', power: 'dash' },
   { skin: 'classic', spike: 'classic', power: 'shield' },
 ]);
-let names = store.get('bd.names', ['', '']);
+let names = ['', ''];
 let players = [];
-let state = 'menu';         // menu | place | aim | countdown | play | over
+let state = 'menu';          // menu | place | aim | countdown | play | over
 let placing = 0;
 let mouse = { x: W / 2, y: H / 2 };
-let aimPress = false;       // pointer went down while aiming (so the placing tap doesn't also launch)
+let aimPress = false;        // pointer went down while aiming (so the placing tap doesn't also launch)
 let elapsed = 0, countdown = 0, clock = 0, shake = 0;
 let particles = [], popups = [];
 let muted = store.get('bd.muted', false);
@@ -348,94 +607,423 @@ function sfx(freq, dur = 0.07, type = 'square', vol = 0.04, slide = 0) {
   } catch {}
 }
 
-// ---------- Screens ----------
-const screens = ['home', 'setup', 'account', 'over'];
+// ============================================================================
+// Screens and tabs
+// ============================================================================
+const screens = ['app', 'setup', 'over'];
 function show(name) {
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
-  if (name === 'home') renderHome();
-  if (name === 'account') renderAccount();
   if (name !== 'over') { state = 'menu'; players = []; }
   $('quitBtn').classList.add('hidden');
+  if (name === 'app') renderApp();
   updateHint();
 }
-document.addEventListener('click', e => {
-  const go = e.target.closest('[data-go]');
-  if (!go) return;
-  const to = go.dataset.go;
-  if (to === 'setup1p' || to === 'setup2p') { mode = to === 'setup1p' ? '1p' : '2p'; show('setup'); renderSetup(); }
-  else show(to);
+$('tabbar').addEventListener('click', e => {
+  const b = e.target.closest('[data-tab]');
+  if (!b) return;
+  tab = b.dataset.tab;
+  if (tab !== 'groups') groupView = null;
+  renderApp();
+  $('tabBody').scrollTop = 0;
 });
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function renderWallet() {
+  $('wallet').innerHTML = me
+    ? `<span class="pill">${coinHtml(me.coins)}</span><span class="pill">Score ${me.score}</span>`
+    : `<span class="pill">Guest</span>`;
+}
+function hasUnclaimed() {
+  if (!me) return false;
+  const today = dayKey();
+  if (me.streak.last !== today) return true;
+  const daily = me.daily.day === today ? me.daily : { progress: {}, claimed: [] };
+  return dailyChallenges().some(c => (daily.progress[c.metric] || 0) >= c.target && !daily.claimed.includes(c.id));
+}
+function renderApp() {
+  renderWallet();
+  document.querySelectorAll('#tabbar [data-tab]').forEach(b => {
+    b.classList.toggle('on', b.dataset.tab === tab);
+    b.querySelector('.badge')?.remove();
+  });
+  if (hasUnclaimed()) {
+    const target = me.streak.last !== dayKey() ? 'play' : 'events';
+    document.querySelector(`#tabbar [data-tab=${target}]`).insertAdjacentHTML('beforeend', '<span class="badge"></span>');
+  }
+  const body = $('tabBody');
+  body.innerHTML = `<div class="tab-inner">${({ play: playTab, events: eventsTab, shop: shopTab, groups: groupsTab, profile: profileTab })[tab]()}</div>`;
+  if (tab === 'groups') loadGroups();
+  if (tab === 'profile') wireProfile();
+  drawStaticSkins(body);
+  tickTimers();
 }
 
-function renderHome() {
-  const a = getAccount(session);
-  $('homeAcct').innerHTML = a
-    ? `Signed in as <b>${escapeHtml(session)}</b> · Score <b>${a.score}</b>`
-    : `Playing as a guest · <button class="link" data-go="account">Create an account</button> to save your score`;
-  $('soundBtn').textContent = muted ? 'Sound: off' : 'Sound: on';
-}
-$('soundBtn').onclick = () => { muted = !muted; store.set('bd.muted', muted); renderHome(); sfx(660); };
+// Shared click handling for buttons inside the tabs
+$('tabBody').addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === 'play1p' || act === 'play2p' || act === 'playEvent') {
+    mode = act === 'play2p' ? '2p' : '1p'; isEvent = act === 'playEvent';
+    openSetup();
+  } else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
+  else if (act === 'claimDaily') busy(b, claimDailyReward);
+  else if (act === 'claimChallenge') busy(b, () => claimChallenge(b.dataset.id));
+  else if (act === 'buy') busy(b, () => buySkin(b.dataset.id));
+  else if (act === 'equip') { loadouts[0].skin = b.dataset.id; store.set('bd.loadouts', loadouts); toast('Equipped for Player 1'); renderApp(); }
+  else if (act === 'openGroup') { groupView = b.dataset.code; renderApp(); }
+  else if (act === 'closeGroup') { groupView = null; renderApp(); }
+  else if (act === 'leaveGroup') busy(b, () => leaveGroup(b.dataset.code));
+  else if (act === 'copyCode') {
+    try { await navigator.clipboard.writeText(b.dataset.code); toast('Code copied'); }
+    catch { toast('Code: ' + b.dataset.code); }
+  } else if (act === 'logout') { logout1(); toast('Logged out'); renderApp(); }
+  else if (act === 'sound') { muted = !muted; store.set('bd.muted', muted); sfx(660); renderApp(); }
+  else if (act === 'loadTop') loadTop();
+});
+$('tabBody').addEventListener('submit', e => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.id === 'createGroupForm') busy(f.querySelector('button'), () => createGroup(f.querySelector('input').value), $('groupErr'));
+  if (f.id === 'joinGroupForm') busy(f.querySelector('button'), () => joinGroup(f.querySelector('input').value), $('groupErr'));
+  if (f.id === 'nameForm') busy(f.querySelector('button'), () => changeName(f.querySelector('input').value), $('nameErr'));
+});
 
-// ---------- Account screen ----------
-let accountTab = 'create';
-function renderAccount(msg = '') {
-  const card = $('accountCard');
-  const a = getAccount(session);
-  if (a) {
-    card.innerHTML = `
-      <div class="fine">Signed in as</div>
-      <div style="font-weight:700; overflow-wrap:anywhere">${escapeHtml(session)}</div>
-      <div><div class="fine">Two-player score</div><div class="big-score">${a.score}</div></div>
+// Runs an async action with the button disabled, showing errors in a toast or an error line
+async function busy(btn, fn, errEl) {
+  if (btn.disabled) return;
+  btn.disabled = true;
+  if (errEl) errEl.textContent = '';
+  try { await fn(); }
+  catch (e) { if (errEl && document.contains(errEl)) errEl.textContent = e.message; else toast(e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ---------- Play tab ----------
+function playTab() {
+  const w = weekInfo(), today = dayKey();
+  let reward = '';
+  if (me && me.streak.last !== today) {
+    const yesterday = dayKey(new Date(Date.now() - 864e5));
+    const next = me.streak.last === yesterday ? me.streak.count + 1 : 1;
+    reward = `<div class="card reward"><div class="row between">
+      <div class="grow"><div class="eyebrow">Daily reward · day ${next}</div><h3>${coinHtml(streakReward(next))} waiting for you</h3>
+      <p class="fine">Come back every day for bigger rewards (up to ${streakReward(7)} coins).</p></div>
+      <button class="coin-btn" data-act="claimDaily">Claim</button></div></div>`;
+  }
+  return `
+    <div class="hero"><h1>BOUNCE DUEL</h1>
+      <p>Two cubes bounce around a square room. Spikes orbit each cube and every hit does 1 damage. Use your power at the right moment. First to 0 HP loses.</p></div>
+    ${reward}
+    <div class="big-buttons">
+      <button data-act="play1p">Single player</button>
+      <button data-act="play2p">Two players</button>
+    </div>
+    <div class="card event">
+      <div class="row between"><span class="eyebrow" style="color:var(--event)">This week's event</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
+      <h2>${w.event.name}</h2>
+      <p>${w.event.desc} Event matches against the CPU pay 50% more coins.</p>
+      <button class="event-btn" data-act="playEvent">Play event match</button>
+    </div>
+    ${me ? '' : `<div class="card"><p>You're playing as a guest. <button class="link" data-act="goto" data-to="profile">Create an account</button> to earn coins, keep your score, join groups and log in on any device.</p></div>`}`;
+}
+
+// ---------- Events tab ----------
+function eventsTab() {
+  const w = weekInfo(), today = dayKey();
+  const daily = me && me.daily.day === today ? me.daily : { progress: {}, claimed: [] };
+  const list = dailyChallenges().map(c => {
+    const have = Math.min(daily.progress[c.metric] || 0, c.target), done = have >= c.target, claimed = daily.claimed.includes(c.id);
+    const btn = !me ? '' : claimed ? '<span class="fine ok">Claimed</span>'
+      : done ? `<button class="small coin-btn" data-act="claimChallenge" data-id="${c.id}">Claim ${coinHtml(c.reward)}</button>`
+      : `<span class="fine">${coinHtml(c.reward)}</span>`;
+    return `<div class="challenge"><div class="row between"><b class="grow">${escapeHtml(c.text)}</b>${btn}</div>
+      <div class="row"><div class="bar grow"><span style="width:${(have / c.target) * 100}%"></span></div><span class="fine">${have} / ${c.target}</span></div></div>`;
+  }).join('');
+  const sale = SKINS.find(s => s.id === w.event.sale);
+  return `
+    <div class="card event">
+      <div class="row between"><span class="eyebrow" style="color:var(--event)">This week</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
+      <h2>${w.event.name}</h2>
+      <p>${w.event.desc}</p>
       <dl class="stats">
-        <dt>Two-player wins</dt><dd>${a.wins2p}</dd>
-        <dt>Two-player losses</dt><dd>${a.losses2p}</dd>
-        <dt>Single-player wins</dt><dd>${a.wins1p}</dd>
-        <dt>Single-player losses</dt><dd>${a.losses1p}</dd>
-        <dt>Skins unlocked</dt><dd>${SKINS.filter(s => s.wins <= a.wins1p).length} / ${SKINS.length}</dd>
+        <dt>Event match bonus</dt><dd>+50% coins</dd>
+        <dt>On sale in the shop</dt><dd>${sale.name} skin, half price</dd>
+        ${w.event.coinRush ? '<dt>Every match</dt><dd>Double coins</dd>' : ''}
       </dl>
-      ${msg ? `<p class="ok">${escapeHtml(msg)}</p>` : ''}
-      <button class="ghost" id="logoutBtn">Log out</button>
-      <p class="fine">Your account is saved on this device.</p>`;
-    $('logoutBtn').onclick = () => { session = null; store.set('bd.session', null); renderAccount(); };
+      <button class="event-btn" data-act="playEvent">Play event match</button>
+      <p class="fine">Next week: <b>${w.next.name}</b>. ${w.next.desc}</p>
+    </div>
+    <div class="card">
+      <div class="row between"><h3>Daily challenges</h3><span class="fine">New in <span class="timer" data-until="${Date.now() + msToMidnight()}"></span></span></div>
+      ${me ? '' : '<p class="fine"><button class="link" data-act="goto" data-to="profile">Log in</button> to track challenges and earn coins.</p>'}
+      ${list}
+    </div>`;
+}
+
+// ---------- Shop tab ----------
+function shopTab() {
+  const w = weekInfo();
+  const cards = SKINS.map(s => {
+    const owned = me ? me.skins.includes(s.id) : FREE_SKINS.includes(s.id);
+    const price = salePrice(s), onSale = price !== s.price;
+    let btn;
+    if (owned) btn = loadouts[0].skin === s.id ? '<button class="small ghost" disabled>Equipped</button>' : `<button class="small ghost" data-act="equip" data-id="${s.id}">Equip</button>`;
+    else if (!me) btn = `<button class="small ghost" data-act="goto" data-to="profile">Log in to buy</button>`;
+    else btn = `<button class="small coin-btn" data-act="buy" data-id="${s.id}" ${me.coins < price ? 'disabled' : ''}>Buy</button>`;
+    return `<div class="skin-card">${onSale ? '<span class="tag">50% OFF</span>' : ''}
+      <canvas data-skin-anim="${s.id}" width="144" height="144"></canvas>
+      <b>${s.name}</b>
+      <span class="price fine">${owned ? 'Owned' : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
+      ${btn}</div>`;
+  }).join('');
+  return `
+    <div class="row between"><h2>Skin shop</h2>${me ? `<span class="pill">${coinHtml(me.coins)}</span>` : ''}</div>
+    <p class="fine">Earn coins by playing matches, finishing daily challenges and claiming your daily reward. This week the ${SKINS.find(s => s.id === w.event.sale).name} skin is half price.</p>
+    <div class="shop-grid">${cards}</div>`;
+}
+
+// ---------- Groups tab ----------
+function groupsTab() {
+  if (!ONLINE) return `<div class="card"><h3>Groups</h3><p>Online accounts aren't switched on for this copy of the game yet.</p></div>`;
+  if (!me) return `<div class="card"><h3>Play with your friends</h3><p>Make a group, share its code with your friends and see who has the highest score.</p>
+    <button data-act="goto" data-to="profile">Log in or create an account</button></div>`;
+  if (groupView) return `<div class="card" id="groupDetail"><button class="link" data-act="closeGroup">← All groups</button><p class="fine">Loading group…</p></div>`;
+  return `
+    <div class="card">
+      <h3>Your groups</h3>
+      <div id="myGroups" class="lb">${me.groups.length ? '<p class="fine">Loading…</p>' : '<p class="fine">You are not in any groups yet.</p>'}</div>
+    </div>
+    <div class="card">
+      <h3>Join a group</h3>
+      <form id="joinGroupForm" class="row"><input class="grow" maxlength="6" placeholder="Group code" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase"><button class="small">Join</button></form>
+      <h3>Make a group</h3>
+      <form id="createGroupForm" class="row"><input class="grow" maxlength="24" placeholder="Group name" autocomplete="off"><button class="small">Create</button></form>
+      <p class="err" id="groupErr"></p>
+    </div>
+    <div class="card">
+      <div class="row between"><h3>Top players</h3><button class="small ghost" data-act="loadTop">Show</button></div>
+      <div id="topList" class="lb"></div>
+    </div>`;
+}
+function lbRows(users) {
+  return users.map((u, i) => `<div class="lb-row ${auth1 && u.id === auth1.uid ? 'me' : ''}">
+      <span class="rank">${i + 1}</span>
+      <div style="min-width:0"><div class="name">${escapeHtml(u.name || 'Player')}</div><div class="meta">${u.wins2p || 0} two-player wins · ${u.wins1p || 0} single-player wins</div></div>
+      <b>${u.score || 0}</b></div>`).join('');
+}
+async function loadGroups() {
+  if (!me) return;
+  try {
+    if (groupView) {
+      const g = await getDoc(auth1, 'groups/' + groupView);
+      const el = $('groupDetail');
+      if (!el) return;
+      if (!g) { el.innerHTML = `<button class="link" data-act="closeGroup">← All groups</button><p>This group no longer exists.</p>`; return; }
+      const members = (await getMany(auth1, (g.members || []).map(id => 'users/' + id))).sort((a, b) => b.score - a.score);
+      el.innerHTML = `<button class="link" data-act="closeGroup">← All groups</button>
+        <h2>${escapeHtml(g.name)}</h2>
+        <div class="row between"><div><div class="fine">Invite code</div><div class="code">${groupView}</div></div>
+          <button class="small ghost" data-act="copyCode" data-code="${groupView}">Copy code</button></div>
+        <p class="fine">Friends join from the Groups tab with this code. ${members.length} of 30 members.</p>
+        <div class="lb">${lbRows(members)}</div>
+        <button class="small ghost" data-act="leaveGroup" data-code="${groupView}">Leave group</button>`;
+      return;
+    }
+    if (!me.groups.length) return;
+    const groups = await getMany(auth1, me.groups.map(c => 'groups/' + c));
+    const el = $('myGroups');
+    if (!el) return;
+    el.innerHTML = groups.length
+      ? groups.map(g => `<button class="group-item" data-act="openGroup" data-code="${g.id}" style="margin-top:8px">
+          <span><b>${escapeHtml(g.name)}</b><br><span class="fine">${(g.members || []).length} members · code ${g.id}</span></span><span>→</span></button>`).join('')
+      : '<p class="fine">You are not in any groups yet.</p>';
+  } catch (e) {
+    const el = $('groupDetail') || $('myGroups');
+    if (el) el.insertAdjacentHTML('beforeend', `<p class="err">${escapeHtml(e.message)}</p>`);
+  }
+}
+async function loadTop() {
+  const el = $('topList');
+  el.innerHTML = '<p class="fine">Loading…</p>';
+  try { el.innerHTML = lbRows(await topPlayers(auth1)); }
+  catch (e) { el.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`; }
+}
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+async function createGroup(name) {
+  name = name.trim();
+  if (!name) throw new GameError('Give your group a name.');
+  if (me.groups.length >= 10) throw new GameError('You can be in up to 10 groups.');
+  for (let tries = 0; tries < 5; tries++) {
+    const code = Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
+    try { await createDoc(auth1, 'groups/' + code, { name: name.slice(0, 24), owner: auth1.uid, members: [auth1.uid] }); }
+    catch (e) { if (e.message === 'EXISTS') continue; throw e; }
+    await mutateUser(auth1, d => { if (!d.groups.includes(code)) d.groups.push(code); });
+    groupView = code; toast('Group created'); renderApp();
     return;
   }
-  const creating = accountTab === 'create';
-  card.innerHTML = `
-    <div class="tabs">
-      <button class="${creating ? '' : 'ghost'} small" data-tab="create">Create account</button>
-      <button class="${creating ? 'ghost' : ''} small" data-tab="login">Log in</button>
-    </div>
-    <form id="acctForm" novalidate>
-      <label>Email <input id="acctEmail" type="email" autocomplete="email" autocapitalize="off" required></label>
-      <label>Password <input id="acctPass" type="password" autocomplete="${creating ? 'new-password' : 'current-password'}" required></label>
-      <p class="err" id="acctErr"></p>
-      <button type="submit">${creating ? 'Create account' : 'Log in'}</button>
-    </form>
-    <p class="fine">${creating ? 'New accounts start with a two-player score of 100.' : ''} Accounts are saved on this device.</p>`;
-  card.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { accountTab = b.dataset.tab; renderAccount(); });
-  $('acctForm').onsubmit = e => {
+  throw new GameError('Could not make a group code. Try again.');
+}
+async function joinGroup(code) {
+  code = code.trim().toUpperCase();
+  if (!/^[A-Z0-9]{6}$/.test(code)) throw new GameError('Group codes are 6 letters and numbers.');
+  const g = await getDoc(auth1, 'groups/' + code);
+  if (!g) throw new GameError('No group has that code.');
+  const members = g.members || [];
+  if (!members.includes(auth1.uid)) {
+    if (members.length >= 30) throw new GameError('That group is full.');
+    if (me.groups.length >= 10) throw new GameError('You can be in up to 10 groups.');
+    await updateDoc(auth1, 'groups/' + code, { members: [...members, auth1.uid] });
+  }
+  await mutateUser(auth1, d => { if (!d.groups.includes(code)) d.groups.push(code); });
+  groupView = code; toast(`Joined ${g.name}`); renderApp();
+}
+async function leaveGroup(code) {
+  const g = await getDoc(auth1, 'groups/' + code);
+  if (g) {
+    const rest = (g.members || []).filter(id => id !== auth1.uid);
+    if (!rest.length && g.owner === auth1.uid) await deleteDoc(auth1, 'groups/' + code);
+    else if (rest.length !== (g.members || []).length) await updateDoc(auth1, 'groups/' + code, { members: rest });
+  }
+  await mutateUser(auth1, d => { d.groups = d.groups.filter(c => c !== code); });
+  groupView = null; toast('Left the group'); renderApp();
+}
+
+// ---------- Profile tab (log in / create account) ----------
+let profileMode = 'create';
+function profileTab() {
+  const sound = `<button class="ghost small" data-act="sound">Sound: ${muted ? 'off' : 'on'}</button>`;
+  if (!ONLINE) return `<div class="card"><h3>Account</h3><p>Online accounts aren't switched on for this copy of the game yet.</p></div>${sound}`;
+  if (me) {
+    return `
+      <div class="card">
+        <div class="eyebrow">Signed in as</div>
+        <div style="font-weight:700; overflow-wrap:anywhere">${escapeHtml(auth1.email || '')}</div>
+        <form id="nameForm" class="row"><input class="grow" maxlength="16" value="${escapeHtml(me.name)}" aria-label="Display name"><button class="small">Save name</button></form>
+        <p class="err" id="nameErr"></p>
+        <div class="row between">
+          <div><div class="fine">Two-player score</div><div class="big-num">${me.score}</div></div>
+          <div style="text-align:right"><div class="fine">Coins</div><div class="big-num" style="color:var(--coin)">${me.coins}</div></div>
+        </div>
+        <dl class="stats">
+          <dt>Two-player wins</dt><dd>${me.wins2p}</dd>
+          <dt>Two-player losses</dt><dd>${me.losses2p}</dd>
+          <dt>Single-player wins</dt><dd>${me.wins1p}</dd>
+          <dt>Single-player losses</dt><dd>${me.losses1p}</dd>
+          <dt>Daily streak</dt><dd>${me.streak.count} day${me.streak.count === 1 ? '' : 's'}</dd>
+          <dt>Skins owned</dt><dd>${me.skins.length} / ${SKINS.length}</dd>
+        </dl>
+        <p class="fine">How score works: when a two-player match ends, the winner gains points equal to the HP they have left and the loser loses the same amount.</p>
+        <button class="ghost" data-act="logout">Log out</button>
+      </div>${sound}`;
+  }
+  const creating = profileMode === 'create', resetting = profileMode === 'reset';
+  return `
+    <div class="card">
+      <div class="seg">
+        <button class="small ${creating ? '' : 'ghost'}" data-pm="create">Create account</button>
+        <button class="small ${creating ? 'ghost' : ''}" data-pm="login">Log in</button>
+      </div>
+      <form id="authForm" novalidate>
+        <label class="field">Email <input id="authEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
+        ${resetting ? '' : `<label class="field">Password <input id="authPass" type="password" autocomplete="${creating ? 'new-password' : 'current-password'}"></label>`}
+        <p class="err" id="authErr"></p>
+        <button type="submit">${creating ? 'Create account' : resetting ? 'Send reset email' : 'Log in'}</button>
+      </form>
+      ${creating ? `<p class="fine">New accounts start with a score of 100 and ${START_COINS} coins. Log in with the same email and password on any device.</p>`
+        : resetting ? '<button class="link" data-pm="login">Back to log in</button>' : '<button class="link" data-pm="reset">Forgot your password?</button>'}
+    </div>${sound}`;
+}
+function wireProfile() {
+  document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { profileMode = b.dataset.pm; renderApp(); });
+  const form = $('authForm');
+  if (!form) return;
+  form.onsubmit = e => {
     e.preventDefault();
-    const email = $('acctEmail').value, pass = $('acctPass').value;
-    const res = creating ? createAccount(email, pass) : checkLogin(email, pass);
-    if (res.err) { $('acctErr').textContent = res.err; return; }
-    if (res.email === p2Account) p2Account = null;
-    session = res.email; store.set('bd.session', session);
-    renderAccount(creating ? 'Account created. Your score starts at 100.' : 'Logged in.');
+    const btn = form.querySelector('button[type=submit]');
+    const email = $('authEmail').value, pass = $('authPass') ? $('authPass').value : '';
+    busy(btn, async () => {
+      if (profileMode === 'reset') { await sendReset(email); $('authErr').innerHTML = '<span class="ok">Check your email for a link to reset your password.</span>'; return; }
+      const sess = profileMode === 'create' ? await signUp(email, pass) : await signIn(email, pass);
+      if (auth2 && auth2.uid === sess.uid) { auth2 = null; p2me = null; }
+      const doc = await loadOrCreateUser(sess);
+      login1(sess, doc);
+      toast(profileMode === 'create' ? `Account created. You got ${START_COINS} coins!` : `Welcome back, ${doc.name}!`);
+      tab = 'play'; renderApp();
+    }, $('authErr'));
   };
 }
-
-// ---------- Setup screen ----------
-function defaultName(i, email) {
-  if (mode === '1p' && i === 1) return 'CPU';
-  return email ? email.split('@')[0].slice(0, 16) : `Player ${i + 1}`;
+async function changeName(name) {
+  name = name.trim();
+  if (!name) throw new GameError('Enter a name.');
+  await mutateUser(auth1, d => { d.name = name.slice(0, 16); });
+  toast('Name saved'); renderApp();
 }
-function accountFor(i) { return i === 0 ? session : p2Account; }
+
+// ---------- Coins: daily reward, challenges, shop ----------
+async function claimDailyReward() {
+  let got = 0;
+  await mutateUser(auth1, d => {
+    const today = dayKey(), yesterday = dayKey(new Date(Date.now() - 864e5));
+    if (d.streak.last === today) throw new GameError('You already claimed today. Come back tomorrow!');
+    const count = d.streak.last === yesterday ? d.streak.count + 1 : 1;
+    got = streakReward(count);
+    d.streak = { last: today, count };
+    d.coins += got;
+  });
+  sfx(880, 0.15, 'square', 0.04, 1.5);
+  toast(`+${got} coins!`); renderApp();
+}
+async function claimChallenge(id) {
+  const c = dailyChallenges().find(x => x.id === id);
+  if (!c) return;
+  await mutateUser(auth1, d => {
+    rollDaily(d);
+    if (d.daily.claimed.includes(id)) throw new GameError('Already claimed.');
+    if ((d.daily.progress[c.metric] || 0) < c.target) throw new GameError('Not finished yet.');
+    d.daily.claimed.push(id);
+    d.coins += c.reward;
+  });
+  sfx(880, 0.15, 'square', 0.04, 1.5);
+  toast(`+${c.reward} coins!`); renderApp();
+}
+async function buySkin(id) {
+  const s = SKINS.find(x => x.id === id), price = salePrice(s);
+  await mutateUser(auth1, d => {
+    if (d.skins.includes(id)) throw new GameError('You already own this skin.');
+    if (d.coins < price) throw new GameError('Not enough coins yet.');
+    d.coins -= price; d.skins.push(id);
+  });
+  loadouts[0].skin = id; store.set('bd.loadouts', loadouts);
+  sfx(660, 0.2, 'square', 0.04, 2);
+  toast(`${s.name} skin unlocked and equipped!`); renderApp();
+}
+
+// Countdown timers on screen
+function tickTimers() {
+  document.querySelectorAll('[data-until]').forEach(el => { el.textContent = fmtLeft(Number(el.dataset.until) - Date.now()); });
+}
+setInterval(tickTimers, 1000);
+
+// ============================================================================
+// Match setup
+// ============================================================================
+function defaultName(i) {
+  const doc = i === 0 ? me : p2me;
+  return doc ? doc.name : `Player ${i + 1}`;
+}
+function ownedSkins(i) { const doc = i === 0 ? me : p2me; return doc ? doc.skins : FREE_SKINS; }
+
+function openSetup() {
+  names = ['', ''];
+  show('setup');
+  renderSetup();
+}
+$('setupBack').onclick = () => show('app');
 
 function renderSetup() {
-  $('setupTitle').textContent = mode === '1p' ? 'Single player' : 'Two players';
+  $('setupTitle').textContent = isEvent ? 'Event match' : mode === '1p' ? 'Single player' : 'Two players';
+  const w = weekInfo();
+  $('setupEvent').innerHTML = isEvent ? `<span class="event-flag">${w.event.name}: ${w.event.desc}</span>` : '';
   const wrap = $('panels');
   wrap.innerHTML = '';
   const humans = mode === '1p' ? 1 : 2;
@@ -444,20 +1032,18 @@ function renderSetup() {
 }
 
 function acctHtml(i) {
-  const email = accountFor(i), a = getAccount(email);
-  if (a) {
-    return `Signed in as <b>${escapeHtml(email)}</b><br>Score <b>${a.score}</b>` +
-      (i === 1 ? ` · <button class="link" data-act="p2out">Sign out</button>` : '');
+  const doc = i === 0 ? me : p2me;
+  if (doc) {
+    return `Signed in as <b>${escapeHtml(doc.name)}</b><br>Score <b>${doc.score}</b> · ${coinHtml(doc.coins)}` +
+      (i === 1 ? ` · <button class="link" data-act2="p2out">Sign out</button>` : '');
   }
-  if (i === 0) {
-    return `Guest · <button class="link" data-go="account">Create an account</button>` +
-      (mode === '2p' ? ' to get a score' : ' to save your wins');
-  }
-  return `<details><summary>Sign in to get a score</summary>
+  if (!ONLINE) return 'Guest';
+  if (i === 0) return `Guest · <button class="link" data-act2="toProfile">Log in</button> to earn coins${mode === '2p' ? ' and score' : ''}`;
+  return `<details><summary>Sign in to earn coins and score</summary>
     <div class="mini-form">
-      <input type="email" id="p2email" placeholder="Email" autocomplete="off" autocapitalize="off">
+      <input type="email" id="p2email" placeholder="Email" autocomplete="off" autocapitalize="off" spellcheck="false">
       <input type="password" id="p2pass" placeholder="Password" autocomplete="off">
-      <div class="row"><button class="small" data-act="p2in">Log in</button><button class="small ghost" data-act="p2new">Create account</button></div>
+      <div class="row"><button class="small" data-act2="p2in">Log in</button><button class="small ghost" data-act2="p2new">Create account</button></div>
       <div class="err" id="p2err"></div>
     </div></details>`;
 }
@@ -479,14 +1065,14 @@ function playerPanel(i) {
     <div class="pick"><span>Spike</span><div class="chips" data-kind="spike"></div><p class="desc" data-desc="spike"></p></div>
     <div class="pick"><span>Power</span><div class="chips" data-kind="power"></div><p class="desc" data-desc="power"></p></div>`;
   const nameInput = el.querySelector('input[id^=name]');
-  nameInput.value = names[i] || defaultName(i, accountFor(i));
-  nameInput.oninput = () => { names[i] = nameInput.value; store.set('bd.names', names); };
+  nameInput.value = names[i] || defaultName(i);
+  nameInput.oninput = () => { names[i] = nameInput.value; };
   fillChips(el, i);
   el.addEventListener('click', e => {
-    const act = e.target.closest('[data-act]');
-    if (act) return panelAction(act.dataset.act, el);
+    const act = e.target.closest('[data-act2]');
+    if (act) return panelAction(act.dataset.act2, act);
     const chip = e.target.closest('.chip');
-    if (!chip || chip.classList.contains('locked')) return;
+    if (!chip) return;
     loadouts[i][chip.dataset.kind] = chip.dataset.id;
     store.set('bd.loadouts', loadouts);
     fillChips(el, i);
@@ -494,34 +1080,27 @@ function playerPanel(i) {
   return el;
 }
 
-function panelAction(act, el) {
-  if (act === 'p2out') { p2Account = null; names[1] = ''; return renderSetup(); }
+function panelAction(act, btn) {
+  if (act === 'toProfile') { tab = 'profile'; show('app'); return; }
+  if (act === 'p2out') { auth2 = null; p2me = null; names[1] = ''; renderSetup(); return; }
   const email = $('p2email').value, pass = $('p2pass').value;
-  if (email.trim().toLowerCase() === session) { $('p2err').textContent = 'Player 1 is already signed in with this account.'; return; }
-  const res = act === 'p2new' ? createAccount(email, pass) : checkLogin(email, pass);
-  if (res.err) { $('p2err').textContent = res.err; return; }
-  p2Account = res.email; names[1] = '';
-  renderSetup();
+  busy(btn, async () => {
+    const sess = act === 'p2new' ? await signUp(email, pass) : await signIn(email, pass);
+    if (auth1 && sess.uid === auth1.uid) throw new GameError('Player 1 is already signed in with this account.');
+    const doc = await loadOrCreateUser(sess);
+    auth2 = sess; p2me = doc; names[1] = '';
+    renderSetup();
+  }, $('p2err'));
 }
 
 function fillChips(el, i) {
-  const lo = loadouts[i];
-  const wins = winsFor(accountFor(i));
-  if (!SKINS.some(s => s.id === lo.skin && s.wins <= wins)) lo.skin = 'classic';
+  const lo = loadouts[i], owned = ownedSkins(i);
+  if (!owned.includes(lo.skin)) lo.skin = 'classic';
   const skinBox = el.querySelector('[data-kind=skin]');
-  skinBox.innerHTML = SKINS.map(s => {
-    const locked = s.wins > wins;
-    return `<button class="chip ${lo.skin === s.id ? 'on' : ''} ${locked ? 'locked' : ''}" data-kind="skin" data-id="${s.id}"
-      title="${locked ? `Win ${s.wins} single-player games to unlock` : s.name}"><canvas width="32" height="32" data-skin="${s.id}"></canvas>${s.name}${locked ? ' 🔒' : ''}</button>`;
-  }).join('');
-  skinBox.querySelectorAll('canvas').forEach(cv => {
-    const c = cv.getContext('2d');
-    drawSkin(c, 16, 16, 32, cv.dataset.skin, 0);
-  });
-  const next = SKINS.find(s => s.wins > wins);
-  el.querySelector('[data-desc=skin]').textContent = next
-    ? `${wins} single-player win${wins === 1 ? '' : 's'}. Next skin (${next.name}) at ${next.wins}.`
-    : 'All skins unlocked!';
+  skinBox.innerHTML = SKINS.filter(s => owned.includes(s.id)).map(s =>
+    `<button class="chip ${lo.skin === s.id ? 'on' : ''}" data-kind="skin" data-id="${s.id}"><canvas width="32" height="32" data-skin="${s.id}"></canvas>${s.name}</button>`).join('');
+  drawStaticSkins(skinBox);
+  el.querySelector('[data-desc=skin]').textContent = owned.length < SKINS.length ? 'Get more skins in the Shop.' : 'You own every skin!';
   el.querySelector('[data-kind=spike]').innerHTML = Object.entries(SPIKES).map(([id, s]) =>
     `<button class="chip ${lo.spike === id ? 'on' : ''}" data-kind="spike" data-id="${id}">${s.name}</button>`).join('');
   el.querySelector('[data-desc=spike]').textContent = SPIKES[lo.spike].desc;
@@ -542,7 +1121,7 @@ function cpuPanel() {
       </div>
       <div class="pick"><span>Difficulty</span><div class="chips">${Object.entries(DIFFICULTIES).map(([id, d]) =>
         `<button class="chip ${difficulty === id ? 'on' : ''}" data-id="${id}">${d.name}</button>`).join('')}</div>
-      <p class="desc">${DIFFICULTIES[difficulty].desc}</p></div>`;
+      <p class="desc">${DIFFICULTIES[difficulty].desc} A win pays ${coinHtml(DIFFICULTIES[difficulty].coins)}${isEvent ? ' +50%' : ''}.</p></div>`;
   };
   draw();
   el.addEventListener('click', e => {
@@ -553,15 +1132,18 @@ function cpuPanel() {
   return el;
 }
 
-// ---------- Match ----------
+// ============================================================================
+// Match
+// ============================================================================
 function makePlayer(i, name, lo, isCpu) {
   return {
-    i, name, color: COLORS[i], isCpu, account: isCpu ? null : accountFor(i),
+    i, name, color: COLORS[i], isCpu,
     skin: lo.skin, spike: lo.spike, power: lo.power,
-    hp: MAX_HP, x: 0, y: 0, vx: 0, vy: 0,
+    hp: mods.hp, maxHp: mods.hp, x: 0, y: 0, vx: 0, vy: 0,
     angle: i * Math.PI, spin: i === 0 ? 1 : -1,
     hitCd: 0, flash: 0, placed: false,
     powerCd: 2, dash: 0, shield: 0, frozen: 0, rage: 0, aiTimer: 0,
+    dealt: 0, powersUsed: 0,
   };
 }
 
@@ -571,13 +1153,12 @@ function randomLoadout() {
 }
 
 function startMatch() {
-  const n = i => ($('name' + i) ? $('name' + i).value.trim() : '') || defaultName(i, accountFor(i));
-  if (mode === '1p') {
-    players = [makePlayer(0, n(0), loadouts[0], false),
-               makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)];
-  } else {
-    players = [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, n(1), loadouts[1], false)];
-  }
+  mods = { ...BASE_MODS, ...(isEvent ? weekInfo().event.mods : {}) };
+  resize();
+  const n = i => ($('name' + i) ? $('name' + i).value.trim() : '') || defaultName(i);
+  players = mode === '1p'
+    ? [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)]
+    : [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, n(1), loadouts[1], false)];
   particles = []; popups = [];
   elapsed = 0; placing = 0; aimPress = false;
   state = 'place';
@@ -587,7 +1168,8 @@ function startMatch() {
 }
 $('startBtn').onclick = () => { sfx(520, 0.1, 'square', 0.04, 1.5); startMatch(); };
 $('againBtn').onclick = startMatch;
-$('quitBtn').onclick = () => show('home');
+$('overMenu').onclick = () => show('app');
+$('quitBtn').onclick = () => { mods = { ...BASE_MODS }; resize(); show('app'); };
 
 function updateHint() {
   if ((state === 'place' || state === 'aim') && players[placing]) {
@@ -679,7 +1261,7 @@ document.addEventListener('keydown', e => {
 // Returns each spike's current position and shape
 function getSpikes(p) {
   const def = SPIKES[p.spike], u = unit(p);
-  const grow = p.rage > 0 ? 1.7 : 1;
+  const grow = (p.rage > 0 ? 1.7 : 1) * (p.unit ? 1 : mods.spikeScale);
   const out = [];
   for (let i = 0; i < def.count; i++) {
     const a = p.angle + i * Math.PI * 2 / def.count;
@@ -719,11 +1301,12 @@ function usePower(p) {
   if (!p || state !== 'play' || p.powerCd > 0 || p.frozen > 0) return;
   const opp = players[1 - p.i], def = POWERS[p.power];
   p.powerCd = def.cd;
+  p.powersUsed++;
   if (p.power === 'dash') p.dash = 2.5;
   if (p.power === 'shield') p.shield = 1.5;
   if (p.power === 'freeze') { opp.frozen = 2.5; burst(opp.x, opp.y, def.color, 18); }
   if (p.power === 'rage') p.rage = 3;
-  if (p.power === 'heal') { p.hp = Math.min(MAX_HP, p.hp + 4); burst(p.x, p.y, def.color, 14); }
+  if (p.power === 'heal') { p.hp = Math.min(p.maxHp, p.hp + 4); burst(p.x, p.y, def.color, 14); }
   if (p.power === 'blink') {
     burst(p.x, p.y, def.color, 14);
     for (let t = 0; t < 12; t++) {
@@ -751,7 +1334,7 @@ function cpuThink(p, dt) {
     shield: near(getSpikes(opp), p, 1.6),
     freeze: near(getSpikes(p), opp, 1.4),
     rage: dist < R * 1.6,
-    heal: p.hp <= MAX_HP - 10,
+    heal: p.hp <= p.maxHp - 10,
     blink: dist > R * 1.5,
   };
   if (want[p.power]) usePower(p);
@@ -774,9 +1357,9 @@ function update(dt) {
   shake = Math.max(0, shake - dt * 30);
 
   if (state === 'countdown') {
-    const before = Math.ceil(countdown);
+    const before = Math.ceil(countdown / 0.8);
     countdown -= dt;
-    if (Math.ceil(countdown) !== before && countdown > 0) sfx(440, 0.12);
+    if (Math.ceil(countdown / 0.8) !== before && countdown > 0) sfx(440, 0.12);
     if (countdown <= 0) { state = 'play'; sfx(880, 0.2); }
     return;
   }
@@ -787,7 +1370,8 @@ function update(dt) {
 
   for (const p of players) {
     const h = sizeOf(p) / 2;
-    for (const k of ['powerCd', 'dash', 'shield', 'frozen', 'rage', 'hitCd', 'flash']) p[k] = Math.max(0, p[k] - dt);
+    p.powerCd = Math.max(0, p.powerCd - dt * mods.powerRate);
+    for (const k of ['dash', 'shield', 'frozen', 'rage', 'hitCd', 'flash']) p[k] = Math.max(0, p[k] - dt);
     if (p.isCpu) cpuThink(p, dt);
     if (p.frozen > 0) continue;
     const m = speedMul * (p.dash > 0 ? 2 : 1);
@@ -827,6 +1411,7 @@ function update(dt) {
     atk.hitCd = SPIKES[atk.spike].hitCd || HIT_COOLDOWN;
     if (tgt.shield > 0) { burst(hit.x, hit.y, '#29f0ff', 3); continue; }
     tgt.hp = Math.max(0, tgt.hp - 1);
+    atk.dealt++;
     tgt.flash = 0.15;
     shake = Math.min(8, shake + 1.5);
     burst(hit.x, hit.y, atk.color);
@@ -837,56 +1422,96 @@ function update(dt) {
   if (dead.length) endMatch(dead);
 }
 
-// ---------- End of match: wins, unlocks and scores ----------
-function endMatch(dead) {
-  state = 'over';
-  $('quitBtn').classList.add('hidden');
-  const text = $('winText');
-  const winner = dead.length === 2 ? null : players.find(p => p.hp > 0);
-  text.textContent = winner ? `${winner.name} wins!` : 'Draw!';
-  text.style.color = winner ? winner.color : '#fff';
-  const lines = [];
-
-  if (mode === '1p') {
-    const me = players[0], won = winner === me;
-    const before = winsFor(me.account);
-    if (me.account) {
-      const acct = getAccount(me.account);
-      if (won) acct.wins1p++; else if (winner) acct.losses1p++;
-      saveAccount(me.account, acct);
-    } else if (won) guestWins++;
-    const after = winsFor(me.account);
-    SKINS.filter(s => s.wins > before && s.wins <= after).forEach(s => lines.push(`<div class="up">New skin unlocked: ${s.name}!</div>`));
-    if (!me.account && won) lines.push(`<div>Create an account to keep your wins and skins.</div>`);
-  } else if (winner) {
-    // Winner gains their remaining HP; loser loses the same amount
-    const amount = winner.hp;
-    for (const p of players) {
-      if (!p.account) { lines.push(`<div style="color:${p.color}">${escapeHtml(p.name)}: guest, no score</div>`); continue; }
-      const acct = getAccount(p.account);
-      const old = acct.score, won = p === winner;
-      acct.score = Math.max(0, old + (won ? amount : -amount));
-      if (won) acct.wins2p++; else acct.losses2p++;
-      saveAccount(p.account, acct);
-      const diff = acct.score - old;
-      lines.push(`<div style="color:${p.color}">${escapeHtml(p.name)}: ${old} → <b>${acct.score}</b>
-        <span class="${diff >= 0 ? 'up' : 'down'}">(${diff >= 0 ? '+' : ''}${diff})</span></div>`);
-    }
-    lines.unshift(`<div class="fine">${escapeHtml(winner.name)} won with ${winner.hp} HP left</div>`);
+// ============================================================================
+// End of match: coins, score, challenges
+// ============================================================================
+function matchCoins(p, winner) {
+  const won = p === winner;
+  let c;
+  if (mode === '1p') c = won ? DIFFICULTIES[difficulty].coins : 3;
+  else c = !winner ? 5 : won ? 15 : 5;
+  if (isEvent) c *= 1.5;
+  if (weekInfo().event.coinRush) c *= 2;
+  return Math.round(c);
+}
+function matchStats(p, winner) {
+  const won = p === winner;
+  const s = { play: 1, damage: p.dealt, power: p.powersUsed };
+  if (isEvent) s.eventplay = 1;
+  if (won) {
+    s['win' + mode] = 1;
+    s['win_' + p.spike] = 1;
+    if (p.hp >= 50) s.bigwin = 1;
+    if (mode === '1p' && difficulty === 'hard') s.winHard = 1;
   }
-  $('results').innerHTML = lines.join('');
-  [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.15, 'square', 0.04), i * 110));
-  setTimeout(() => { if (state === 'over') $('over').classList.remove('hidden'); }, 700);
+  return s;
 }
 
-// ---------- Drawing ----------
+async function endMatch(dead) {
+  state = 'over';
+  $('quitBtn').classList.add('hidden');
+  const winner = dead.length === 2 ? null : players.find(p => p.hp > 0);
+  const text = $('winText');
+  text.textContent = winner ? `${winner.name} wins!` : 'Draw!';
+  text.style.color = winner ? winner.color : '#fff';
+  [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.15, 'square', 0.04), i * 110));
+  const results = $('results');
+  const humans = players.filter(p => !p.isCpu);
+  const sessions = humans.map(p => (p.i === 0 ? auth1 : auth2));
+  results.innerHTML = sessions.some(Boolean) ? '<div class="fine">Saving…</div>' : '';
+  setTimeout(() => { if (state === 'over') $('over').classList.remove('hidden'); }, 700);
+
+  const lines = [];
+  if (mode === '2p' && winner) lines.push(`<div class="fine">${escapeHtml(winner.name)} won with ${winner.hp} HP left</div>`);
+  const challenges = dailyChallenges();
+  for (const [k, p] of humans.entries()) {
+    const sess = sessions[k], coins = matchCoins(p, winner), name = `<b style="color:${p.color}">${escapeHtml(p.name)}</b>`;
+    if (!sess) {
+      lines.push(`<div class="line">${name}: ${coinHtml(coins)} coins not saved. Log in to keep coins${mode === '2p' ? ' and score' : ''}.</div>`);
+      continue;
+    }
+    try {
+      let scoreLine = '', done = [];
+      const before = {};
+      await mutateUser(sess, d => {
+        rollDaily(d);
+        const won = p === winner;
+        d.coins += coins;
+        if (mode === '1p') { if (won) d.wins1p++; else if (winner) d.losses1p++; }
+        else if (winner) {
+          // Winner gains their remaining HP; loser loses the same amount
+          const old = d.score;
+          d.score = Math.max(0, old + (won ? winner.hp : -winner.hp));
+          if (won) d.wins2p++; else d.losses2p++;
+          const diff = d.score - old;
+          scoreLine = ` · Score ${old} → <b>${d.score}</b> <span class="${diff >= 0 ? 'up' : 'down'}">(${diff >= 0 ? '+' : ''}${diff})</span>`;
+        }
+        const stats = matchStats(p, winner);
+        for (const c of challenges) before[c.id] = (d.daily.progress[c.metric] || 0) >= c.target;
+        for (const [key, v] of Object.entries(stats)) {
+          if (challenges.some(c => c.metric === key)) d.daily.progress[key] = (d.daily.progress[key] || 0) + v;
+        }
+        done = challenges.filter(c => !before[c.id] && (d.daily.progress[c.metric] || 0) >= c.target);
+      });
+      lines.push(`<div class="line">${name}: <span class="up">+${coins}</span> ${coinHtml('')}${scoreLine}</div>`);
+      done.forEach(c => lines.push(`<div class="line">${name}: challenge done! “${escapeHtml(c.text)}”. Claim ${coinHtml(c.reward)} in Events.</div>`));
+    } catch (e) {
+      lines.push(`<div class="line down">${name}: couldn't save this match. ${escapeHtml(e.message)}</div>`);
+    }
+  }
+  if (isEvent) lines.push(`<div class="fine">Event match bonus: +50% coins</div>`);
+  if (state === 'over') results.innerHTML = lines.join('');
+}
+
+// ============================================================================
+// Drawing
+// ============================================================================
 const STARS = Array.from({ length: 9 }, (_, i) => ({ x: ((i * 37) % 100) / 100 - 0.5, y: ((i * 61 + 17) % 100) / 100 - 0.5, p: i }));
 
 function drawSkin(c, x, y, s, skin, t) {
   const h = s / 2, l = x - h, top = y - h;
   c.save();
-  if (skin === 'classic') { c.fillStyle = '#fff'; c.fillRect(l, top, s, s); }
-  else if (skin === 'checker') {
+  if (skin === 'checker') {
     const n = 4, q = s / n;
     for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { c.fillStyle = (i + j) % 2 ? '#111' : '#fff'; c.fillRect(l + i * q, top + j * q, q + 0.5, q + 0.5); }
     c.strokeStyle = '#fff'; c.lineWidth = Math.max(1, s * 0.04); c.strokeRect(l, top, s, s);
@@ -901,6 +1526,12 @@ function drawSkin(c, x, y, s, skin, t) {
     c.fillStyle = g; c.fillRect(l, top, s, s);
     c.fillStyle = 'rgba(255,255,255,.6)';
     c.beginPath(); c.moveTo(l, top); c.lineTo(l + s * 0.55, top); c.lineTo(l, top + s * 0.55); c.fill();
+  } else if (skin === 'candy') {
+    c.fillStyle = '#ff7ac0'; c.fillRect(l, top, s, s);
+    c.beginPath(); c.rect(l, top, s, s); c.clip();
+    c.strokeStyle = '#fff'; c.lineWidth = s * 0.12;
+    const off = (t * s * 0.4) % (s * 0.5);
+    for (let k = -2; k < 5; k++) { const sx = l + k * s * 0.5 + off; c.beginPath(); c.moveTo(sx, top); c.lineTo(sx + s, top + s); c.stroke(); }
   } else if (skin === 'lava') {
     const off = Math.sin(t * 2) * s * 0.4;
     const g = c.createLinearGradient(l, top + off, l + s, top + s + off);
@@ -909,6 +1540,14 @@ function drawSkin(c, x, y, s, skin, t) {
     c.strokeStyle = 'rgba(60,0,0,.7)'; c.lineWidth = Math.max(1, s * 0.05);
     c.beginPath(); c.moveTo(l + s * 0.15, top + s * 0.3); c.lineTo(l + s * 0.45, top + s * 0.45); c.lineTo(l + s * 0.4, top + s * 0.8);
     c.moveTo(l + s * 0.45, top + s * 0.45); c.lineTo(l + s * 0.85, top + s * 0.35); c.stroke();
+  } else if (skin === 'void') {
+    c.fillStyle = '#000'; c.fillRect(l, top, s, s);
+    c.shadowColor = '#8b5cf6'; c.shadowBlur = s * (0.25 + 0.15 * Math.sin(t * 3));
+    c.strokeStyle = '#fff'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(l, top, s, s);
+    c.shadowBlur = 0;
+    const g = c.createRadialGradient(x, y, 0, x, y, s * 0.4);
+    g.addColorStop(0, 'rgba(139,92,246,.8)'); g.addColorStop(1, 'rgba(139,92,246,0)');
+    c.fillStyle = g; c.fillRect(l, top, s, s);
   } else if (skin === 'gold') {
     const g = c.createLinearGradient(l, top, l + s, top + s);
     g.addColorStop(0, '#fff6c2'); g.addColorStop(0.45, '#f2c94c'); g.addColorStop(1, '#9a6f00');
@@ -930,8 +1569,15 @@ function drawSkin(c, x, y, s, skin, t) {
     const g = c.createLinearGradient(l, top, l + s, top + s);
     for (let i = 0; i <= 4; i++) g.addColorStop(i / 4, `hsl(${(t * 120 + i * 70) % 360}, 90%, 60%)`);
     c.fillStyle = g; c.fillRect(l, top, s, s);
-  }
+  } else { c.fillStyle = '#fff'; c.fillRect(l, top, s, s); }
   c.restore();
+}
+function drawStaticSkins(root) {
+  root.querySelectorAll('canvas[data-skin]').forEach(cv => {
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, cv.width, cv.height);
+    drawSkin(c, cv.width / 2, cv.height / 2, cv.width, cv.dataset.skin, 0);
+  });
 }
 
 function drawCube(p, ghost) {
@@ -958,14 +1604,13 @@ function drawCube(p, ghost) {
     ctx.globalAlpha = 1;
   }
   ctx.restore();
-  if (p.unit) return; // preview: no name tag
   ctx.font = `bold ${Math.round(15 * Math.max(U, 0.8))}px system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = p.color;
   ctx.fillText(p.name, p.x, p.y - h - 12);
   const bw = s + 10;
   ctx.fillStyle = '#333'; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw, 5);
-  ctx.fillStyle = p.color; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw * p.hp / MAX_HP, 5);
+  ctx.fillStyle = p.color; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw * p.hp / p.maxHp, 5);
 }
 
 function drawSpikes(c, p) {
@@ -1013,7 +1658,7 @@ function drawHud() {
     const x = i === 0 ? 16 : W - 16 - bw;
     ctx.fillStyle = '#222'; ctx.fillRect(x, top, bw, 22);
     ctx.fillStyle = p.color;
-    const w = bw * p.hp / MAX_HP;
+    const w = bw * p.hp / p.maxHp;
     ctx.fillRect(i === 0 ? x : x + bw - w, top, w, 22);
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 13px system-ui, sans-serif';
@@ -1042,7 +1687,10 @@ function drawPowerButtons() {
     ctx.font = `bold ${Math.round(b.r * 0.36)}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(def.name, b.x, b.y - (ready ? 0 : b.r * 0.15));
-    if (!ready) { ctx.font = `${Math.round(b.r * 0.3)}px system-ui, sans-serif`; ctx.fillText(Math.ceil(Math.max(p.powerCd, p.frozen)) + 's', b.x, b.y + b.r * 0.28); }
+    if (!ready) {
+      ctx.font = `${Math.round(b.r * 0.3)}px system-ui, sans-serif`;
+      ctx.fillText(Math.ceil(Math.max(p.powerCd / mods.powerRate, p.frozen)) + 's', b.x, b.y + b.r * 0.28);
+    }
     ctx.fillStyle = p.color; ctx.font = 'bold 11px system-ui, sans-serif';
     const label = p.isCpu ? 'CPU' : coarse ? '' : (i === 0 ? (mode === '1p' ? 'A / Space' : 'Key A') : 'Key L');
     if (label) ctx.fillText(label, b.x, b.y - b.r - 10);
@@ -1065,24 +1713,30 @@ function drawAimArrow(p) {
   ctx.lineWidth = 1;
 }
 
+// Animated previews on the setup screen and in the shop
 function drawPreviews() {
-  document.querySelectorAll('canvas.preview').forEach(cv => {
+  document.querySelectorAll('#setup canvas.preview').forEach(cv => {
     const size = 120;
     if (cv.width !== size * DPR) { cv.width = size * DPR; cv.height = size * DPR; }
     const c = cv.getContext('2d');
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.fillStyle = '#000'; c.fillRect(0, 0, size, size);
-    const isCpu = cv.dataset.i === 'cpu';
-    const i = isCpu ? 1 : +cv.dataset.i;
-    if (isCpu) {
+    if (cv.dataset.i === 'cpu') {
       c.fillStyle = '#555'; c.font = 'bold 44px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText('?', 60, 60);
       return;
     }
-    const lo = loadouts[i];
+    const i = +cv.dataset.i, lo = loadouts[i];
     const fake = { x: 60, y: 60, unit: 0.34, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
     drawSpikes(c, fake);
     drawSkin(c, 60, 60, sizeOf(fake), lo.skin, clock);
+  });
+}
+function drawShop() {
+  document.querySelectorAll('canvas[data-skin-anim]').forEach(cv => {
+    const c = cv.getContext('2d');
+    c.clearRect(0, 0, cv.width, cv.height);
+    drawSkin(c, cv.width / 2, cv.height / 2, cv.width * 0.6, cv.dataset.skinAnim, clock);
   });
 }
 
@@ -1091,11 +1745,12 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
   if (!$('setup').classList.contains('hidden')) drawPreviews();
+  if (!$('app').classList.contains('hidden') && tab === 'shop') drawShop();
   if (!players.length) return;
 
   ctx.save();
   if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.strokeStyle = isEvent ? 'rgba(192,132,252,0.7)' : 'rgba(255,255,255,0.35)';
   ctx.lineWidth = 2;
   ctx.strokeRect(AX - 1, AY - 1, AS + 2, AS + 2);
   ctx.lineWidth = 1;
@@ -1154,7 +1809,8 @@ function loop(now) {
   draw();
   requestAnimationFrame(loop);
 }
-show('home');
+show('app');
+restoreSession().then(() => { if (!$('app').classList.contains('hidden')) renderApp(); });
 requestAnimationFrame(loop);
 </script>
 </body>

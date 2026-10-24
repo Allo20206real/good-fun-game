@@ -2,10 +2,13 @@
 
 Two cubes bounce around a square room in the middle of a black screen, like the old DVD logo. Spikes orbit each cube, and every hit on the other cube does 1 damage. Both cubes start with 100 HP; the first to 0 loses.
 
-## Modes
+The app has five tabs: **Play**, **Events**, **Shop**, **Groups** and **Profile**.
+
+## Play
 
 - **Single player**: play against a CPU cube (Easy, Normal or Hard). The CPU picks a random skin, spike and power each match.
-- **Two players**: two people on the same device.
+- **Two players**: two people on the same device. Player 2 can sign in to their own account on the setup screen.
+- **Event match**: single player with this week's special rules and 50% more coins.
 
 Each player taps where their cube starts, then drags or taps to pick the bounce direction. After a 3-2-1 countdown the cubes go, and they speed up over time.
 
@@ -32,24 +35,45 @@ Press your power button (or a key: Player 1 = `A` / `Space`, Player 2 = `L`) whe
 | Heal | Get back 4 HP | 18 s |
 | Blink | Teleport right next to the other cube | 6 s |
 
-## Skins
+## Coins
 
-Classic and Checker are free. The rest unlock with single-player wins: Neon (1), Ice (2), Lava (3), Gold (5), Galaxy (8), Rainbow (12).
+Coins are the game's currency. You earn them by:
+
+- **Playing**: beating the CPU pays 10 / 20 / 35 coins (Easy / Normal / Hard), a loss pays 3. In two-player games the winner gets 15 and the loser 5.
+- **Daily reward**: claim once a day. Keep a streak going for more: 20 coins on day 1, up to 80 on day 7 and after.
+- **Daily challenges**: three new challenges every day (for example "Deal 300 damage" or "Win a game with the Lance spike"), worth 30–60 coins each.
+
+Spend coins in the **Shop** on skins: Neon, Ice, Candy, Lava, Void, Gold, Galaxy and Rainbow (100–1000 coins). Classic and Checker are free.
+
+## Events
+
+A new event starts every Monday and runs all week:
+
+| Event | Rules |
+|---|---|
+| Speed Frenzy | Cubes start 60% faster |
+| Power Chaos | Powers recharge 3 times faster |
+| Giant Spikes | Every spike is 60% bigger |
+| Tiny Room | The room is 30% smaller |
+| Sudden Death | Both cubes start with only 30 HP |
+| Coin Rush | Every match pays double coins |
+
+Each event also puts one skin on sale at half price.
+
+## Groups
+
+Make a group and share its 6-character code. Friends join from the Groups tab, and the group shows a leaderboard of everyone's score. There's also a **Top players** list across everyone.
 
 ## Accounts and score
 
-Create an account with an email and password on the Account page. In two-player games each player can be signed in (Player 2 signs in on the setup screen).
+Create an account with just an email and password on the **Profile** tab, then log in with the same details on any phone or computer. Forgot your password? Use "Forgot your password?" to get a reset email.
 
-- Every account starts with a score of **100**.
-- When a two-player match ends, the winner **gains** points equal to the HP they have left, and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all (they're on 100 HP) and you lose 100.
-- The score can't go below 0.
+- Every account starts with a score of **100** and **50 coins**.
+- When a two-player match ends, the winner **gains** points equal to the HP they have left and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all and you lose 100. The score can't go below 0.
 
-Accounts are saved on the device (passwords are stored as salted SHA-256 hashes, never as plain text). They don't sync between devices, since the game has no server.
+Accounts are stored in Firebase. **See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) to connect your Firebase project** — until then the game runs in guest mode. The security rules in `firestore.rules` stop players from changing other people's accounts, giving themselves large amounts of coins or score, or taking skins without paying.
 
-## Play
+## Play it
 
-Open `index.html` in a browser (mouse, keyboard or touch).
-
-## On your phone
-
-The `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md) for how to open it in Expo Go.
+- **On the web**: open `index.html` in a browser, or publish it with the included GitHub Pages workflow (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md)).
+- **On your phone**: the `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md).
