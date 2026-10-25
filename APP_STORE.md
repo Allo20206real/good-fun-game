@@ -64,7 +64,7 @@ In App Store Connect, open the app and fill in:
 - **User Content → Other User Content** (display names and group names): App Functionality, linked, not used for tracking.
 - **Usage Data → Product Interaction** (game stats like wins): App Functionality, linked, not used for tracking.
 
-**Screenshots:** Apple needs at least one set for 6.7" or 6.9" iPhones (1290 × 2796 or 1320 × 2868). The easiest way: install the TestFlight build, take screenshots of the menu, a match and the shop on your iPhone, and upload them.
+**Screenshots:** Apple needs at least one set for 6.7" or 6.9" iPhones. Ready-made 1290 × 2796 screenshots are in [`store/`](store/) (the `appstore-1290x2796-*.png` files). You can also take your own on an iPhone from the TestFlight build.
 
 **App Review Information:** create a test account in the app (any email and password) and put it in the **Sign-in information** box so the reviewer can log in. In **Notes**, you can write:
 

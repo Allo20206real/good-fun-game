@@ -78,3 +78,4 @@ Accounts are stored in the `bounce-duel` Firebase project (see [FIREBASE_SETUP.m
 - **On the web**: open `index.html` in a browser, or publish it with the included GitHub Pages workflow (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md)).
 - **On your phone**: the `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md).
 - **On the App Store**: the Expo app is set up for release. See [APP_STORE.md](APP_STORE.md) for how to build and submit it.
+- **On Google Play**: see [GOOGLE_PLAY.md](GOOGLE_PLAY.md). Store images (icon, feature graphic, screenshots) are in [`store/`](store/).
