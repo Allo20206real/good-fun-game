@@ -291,7 +291,7 @@
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyClzCpoDFc1ogYlb41dJAN9oaAJd1h39a4',
   projectId: 'bounce-duel',
-  databaseURL: '',   // Realtime Database URL, for online matches
+  databaseURL: 'https://bounce-duel-default-rtdb.europe-west1.firebasedatabase.app',   // for online matches
 };
 
 const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the local emulator
@@ -469,9 +469,12 @@ function rtdbUrl(path, token) {
   return `${cfg.databaseURL}/${path}.json?${ns}auth=${encodeURIComponent(token)}`;
 }
 async function rtdb(method, path, body) {
-  const { res, body: out } = await request(rtdbUrl(path, await idToken(auth1)), {
-    method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const url = rtdbUrl(path, await idToken(auth1));
+  let res, out;
+  try {
+    res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    out = await res.json().catch(() => null);
+  } catch { throw new GameError("Couldn't reach the match server. Check your internet connection."); }
   if (res.status === 401 || res.status === 403) throw new GameError('DENIED');
   if (!res.ok) throw new GameError("Couldn't reach the match server. Check your internet connection.");
   return out;
