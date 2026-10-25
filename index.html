@@ -1727,7 +1727,8 @@ const SEARCH_SECONDS = window.BD_SEARCH_SECONDS || 30;
 const SELECT_SECONDS = window.BD_SELECT_SECONDS || 20;
 const PLACE_SECONDS = 10;
 const SEND_EVERY = 1 / 15;
-const GUEST_DELAY = 0.12;     // the guest shows the match this far behind, to smooth out the network
+const MAX_IN_FLIGHT = 3;      // updates the host can have on the way at once
+const GUEST_DELAY = 0.12;     // the guest shows the match at least this far behind, to smooth out the network
 let mmSession = null;         // matchmaking search in progress
 let online = null;            // online match in progress
 
@@ -1782,13 +1783,13 @@ async function tryPair(sess, myId) {
   // With three or more searching, the partner is picked at random.
   const free = Object.entries(q).filter(([uid, e]) => uid > myId && e && !e.match && e.v === MATCH_VERSION && now - e.t < (SEARCH_SECONDS + 5) * 1000);
   if (!free.length || sess.cancelled || sess.found) return;
-  const [other] = free[Math.floor(Math.random() * free.length)];
+  const [other, entry] = free[Math.floor(Math.random() * free.length)];
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   // Lock ourselves first; if this fails, someone just paired with us and the watcher takes over
   try { await rtdb('PUT', `queue/${myId}/match`, { id, by: myId }); } catch { return; }
   if (sess.cancelled) { await rtdb('DELETE', `queue/${myId}/match`).catch(() => {}); return; }
   try {
-    await rtdb('PUT', `matches/${id}`, { players: { a: myId, b: other }, v: MATCH_VERSION, phase: 'select', created: SERVER_TIME });
+    await rtdb('PUT', `matches/${id}`, { players: { a: myId, b: other }, names: { a: me.name, b: safeName(entry.name) }, v: MATCH_VERSION, phase: 'select', created: SERVER_TIME });
     await rtdb('PUT', `queue/${other}/match`, { id, by: myId });
   } catch {
     // They were paired with someone else a moment ago: undo and keep looking
@@ -1824,7 +1825,7 @@ function joinMatch(id, role) {
   online = {
     id, role, myIdx: role === 'host' ? 0 : 1, myId: auth1.uid, oppId: null, oppName: 'your opponent',
     mirror: null, phase: 'select', joinedAt: Date.now(), phaseAt: Date.now(), ready: false, placed: false,
-    presses: 0, seenPresses: 0, snaps: [], renderT: 0, lastSend: 0, sending: false, timers: [],
+    presses: 0, seenPresses: 0, snaps: [], renderT: 0, lastSend: 0, inFlight: 0, gap: 0.1, lastArrival: 0, timers: [],
   };
   mode = 'online'; isEvent = false; matchName = ''; renaming = false;
   mods = { ...BASE_MODS }; resize();
@@ -1876,6 +1877,7 @@ function onMatchData(m) {
   o.oppId = o.role === 'host' ? m.players?.b : m.players?.a;
   const opp = m.p?.[o.oppId];
   if (opp?.name) o.oppName = safeName(opp.name);
+  else if (m.names) o.oppName = safeName(o.role === 'host' ? m.names.b : m.names.a);
   if (m.phase === 'cancelled') {
     if (o.phase !== 'over') leaveOnline(m.leftBy === o.myId ? 'You left the match.' : `${o.oppName} left the match.`, true);
     return;
@@ -1990,9 +1992,9 @@ function packState() {
 }
 function hostSend() {
   const o = online;
-  if (o.sending || clock - o.lastSend < SEND_EVERY) return;
-  o.lastSend = clock; o.sending = true;
-  rtdb('PATCH', `matches/${o.id}`, { state: packState() }).catch(() => {}).finally(() => { o.sending = false; });
+  if (o.inFlight >= MAX_IN_FLIGHT || clock - o.lastSend < SEND_EVERY) return;
+  o.lastSend = clock; o.inFlight++;
+  rtdb('PATCH', `matches/${o.id}`, { state: packState() }).catch(() => {}).finally(() => { o.inFlight--; });
 }
 function hostFinish(winner) {
   const o = online;
@@ -2012,6 +2014,9 @@ function guestSnapshot(st) {
   const o = online, snaps = o.snaps;
   if (!st?.p || (snaps.length && st.t <= snaps[snaps.length - 1].t)) return;
   const prev = snaps[snaps.length - 1];
+  const now = performance.now() / 1000;
+  if (o.lastArrival) o.gap = o.gap * 0.8 + Math.min(1, now - o.lastArrival) * 0.2;
+  o.lastArrival = now;
   snaps.push({ t: st.t, p: st.p });
   if (snaps.length > 40) snaps.splice(0, snaps.length - 40);
   if (!prev) return;
@@ -2037,7 +2042,8 @@ function guestTick(dt) {
   for (const q of players) q.flash = Math.max(0, q.flash - dt);
   if (!snaps.length) return;
   // Play the match a little behind the newest state, catching up gently if we drift
-  const target = snaps[snaps.length - 1].t - GUEST_DELAY;
+  const delay = Math.min(0.6, Math.max(GUEST_DELAY, o.gap * 1.6 + 0.04));
+  const target = snaps[snaps.length - 1].t - delay;
   if (!o.renderT || Math.abs(o.renderT - target) > 0.5) o.renderT = target;
   else o.renderT += dt * (1 + Math.max(-0.5, Math.min(0.5, (target - o.renderT) * 2)));
   const t = o.renderT;
