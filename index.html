@@ -635,6 +635,8 @@ window.bdBack = () => {
 const IS_WEBSITE = /^https?:$/.test(location.protocol) && !window.ReactNativeWebView && !window.claude;
 const isInstalled = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_ANDROID = /android/i.test(navigator.userAgent);
+const APK_URL = 'https://github.com/Allo20206real/good-fun-game/releases/latest/download/BounceDuel.apk';
 let installPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (tab === 'play') renderApp(); });
 window.addEventListener('appinstalled', () => { installPrompt = null; renderApp(); });
@@ -643,6 +645,12 @@ if (IS_WEBSITE && 'serviceWorker' in navigator) {
 }
 function installCard() {
   if (!IS_WEBSITE || isInstalled() || store.get('bd.installHidden', false)) return '';
+  if (IS_ANDROID) {
+    return `<div class="card"><div class="row between"><h3>Get the Android app</h3><button class="link" data-act="hideInstall">Not now</button></div>
+      <p>Download Bounce Duel as a real app. Your account and coins stay the same.</p>
+      <a href="${APK_URL}"><button class="small" style="width:100%">Download the app (APK)</button></a>
+      <p class="fine">Open the file when it's downloaded and tap <b>Install</b>. If your phone asks, allow your browser to install apps.${installPrompt ? ' Or <button class="link" data-act="install">add this page to your home screen</button>.' : ''}</p></div>`;
+  }
   const how = installPrompt
     ? '<button class="small" data-act="install">Install app</button>'
     : IS_IOS

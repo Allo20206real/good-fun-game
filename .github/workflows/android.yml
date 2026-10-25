@@ -1,0 +1,83 @@
+name: Build Android app
+
+# Builds the Expo app into an installable APK and publishes it as a GitHub release,
+# so Android players can download BounceDuel.apk straight from the repo page.
+on:
+  push:
+    branches: [main, claude/awesome-volta-53053w]
+    paths:
+      - index.html
+      - mobile/**
+      - .github/workflows/android.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install packages
+        run: npm ci
+
+      - name: Copy the game into the app
+        run: node scripts/sync-game.js
+
+      - name: Set the version number
+        # Each build gets a higher versionCode so a new APK installs over the old one
+        run: |
+          node -e "const fs=require('fs');const a=JSON.parse(fs.readFileSync('app.json'));a.expo.android.versionCode=${{ github.run_number }};fs.writeFileSync('app.json',JSON.stringify(a,null,2))"
+
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install --clean
+        env:
+          CI: 1
+
+      - name: Build the APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Rename the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk ../BounceDuel.apk
+
+      - name: Publish the download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-${{ github.run_number }}
+          name: Bounce Duel for Android (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: BounceDuel.apk
+          body: |
+            **Download `BounceDuel.apk` below** on your Android phone to install Bounce Duel.
+
+            How to install:
+            1. Tap **BounceDuel.apk** below to download it.
+            2. Open the downloaded file. If your phone asks, allow your browser to **install unknown apps**.
+            3. Tap **Install**. If Google Play Protect warns that the app is from an unknown developer, tap **More details → Install anyway**.
+
+            To update later, download the newest APK from this page and install it over the old one. Your account and coins stay saved online.
+
+            iPhone: open https://allo20206real.github.io/good-fun-game/ and tap Share → **Add to Home Screen**.
