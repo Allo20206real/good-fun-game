@@ -547,10 +547,12 @@ const POWERS = {
   heal:   { name: 'Heal', desc: 'Get back 4 HP.', cd: 18, color: '#4ade80' },
   blink:  { name: 'Blink', desc: 'Teleport right next to the other cube.', cd: 6, color: '#c084fc' },
 };
+// How the CPU plays. react: seconds before it presses its power; skill: how often it spots a good moment;
+// counter: how often it answers when you use your power; random: presses per second for no reason.
 const DIFFICULTIES = {
-  easy:   { name: 'Easy', desc: 'Uses its power at random.', think: 0.6, smart: 0.35, coins: 10 },
-  normal: { name: 'Normal', desc: 'Uses its power when it makes sense.', think: 0.3, smart: 0.8, coins: 20 },
-  hard:   { name: 'Hard', desc: 'Reacts instantly and never wastes its power.', think: 0, smart: 1, coins: 35 },
+  easy:   { name: 'Easy', desc: 'Starts with 80 HP and is slow to react.', hp: 80, react: 0.9, skill: 0.3, counter: 0.15, random: 0.08, coins: 10 },
+  normal: { name: 'Normal', desc: 'A fair fight: plays like a regular player.', hp: 100, react: 0.55, skill: 0.55, counter: 0.35, random: 0.05, coins: 20 },
+  hard:   { name: 'Hard', desc: 'Picks a strong spike and power, reacts fast and answers your power.', hp: 100, strong: true, react: 0.3, skill: 0.85, counter: 0.65, random: 0.02, coins: 35 },
 };
 
 // Weekly events rotate every Monday
@@ -1411,21 +1413,30 @@ function makePlayer(i, name, lo, isCpu) {
     hp: mods.hp, maxHp: mods.hp, x: 0, y: 0, vx: 0, vy: 0,
     angle: i * Math.PI, spin: i === 0 ? 1 : -1,
     hitCd: 0, flash: 0, placed: false,
-    powerCd: 2, dash: 0, shield: 0, frozen: 0, rage: 0, aiTimer: 0,
+    powerCd: 2, dash: 0, shield: 0, frozen: 0, rage: 0, aiTimer: 0, aiPlan: null, ai: isCpu ? DIFFICULTIES[difficulty] : null,
     dealt: 0, powersUsed: 0,
   };
 }
 
-function randomLoadout() {
+function randomLoadout(strong = false) {
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  return { skin: pick(SKINS).id, spike: pick(Object.keys(SPIKES)), power: pick(Object.keys(POWERS)) };
+  return {
+    skin: pick(SKINS).id,
+    // Hard CPUs pick from the spikes and powers that win most often
+    spike: pick(strong ? ['saw', 'lance', 'twin'] : Object.keys(SPIKES)),
+    power: pick(strong ? ['shield', 'heal', 'rage'] : Object.keys(POWERS)),
+  };
 }
 
 function startMatch() {
   mods = { ...BASE_MODS, ...(isEvent ? weekInfo().event.mods : {}) };
   resize();
   mode = '1p';
-  players = [makePlayer(0, myMatchName(), myLoadout(), false), makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)];
+  const level = DIFFICULTIES[difficulty];
+  players = [makePlayer(0, myMatchName(), myLoadout(), false), makePlayer(1, `CPU (${level.name})`, randomLoadout(level.strong), true)];
+  // Easy CPUs start with less HP (event rules that lower everyone's HP still apply)
+  const cpu = players[1];
+  cpu.hp = cpu.maxHp = Math.round(mods.hp * level.hp / 100);
   particles = []; popups = [];
   elapsed = 0; placing = 0; aimPress = false;
   state = 'place';
@@ -1477,14 +1488,14 @@ function launch(p, dx, dy) {
   p.vx = dx / l * baseSpeed(); p.vy = dy / l * baseSpeed();
 }
 
+// The CPU picks a random spot and direction. It doesn't aim away from (or at) your cube;
+// it only re-rolls if the spot would put the two cubes on top of each other.
 function placeCpu(p) {
   const other = players[1 - p.i];
   for (let tries = 0; tries < 50; tries++) {
     const pos = clampPos(AX + Math.random() * AS, AY + Math.random() * AS);
-    const far = Math.hypot(pos.x - other.x, pos.y - other.y) >= orbitOf(p) * 1.4;
-    // Prefer a spot away from the player; otherwise take any spot that doesn't overlap
-    if (far || (tries === 49 && !overlaps(other, pos.x, pos.y))) { p.x = pos.x; p.y = pos.y; break; }
-    if (tries === 49) { p.x = AX + AS - sizeOf(p); p.y = AY + AS - sizeOf(p); }
+    if (!overlaps(other, pos.x, pos.y)) { p.x = pos.x; p.y = pos.y; break; }
+    if (tries === 49) { p.x = AX + AS / 2; p.y = other.y < AY + AS / 2 ? AY + AS - sizeOf(p) : AY + sizeOf(p); }
   }
   p.placed = true;
   const a = (Math.floor(Math.random() * 4) + 0.25 + Math.random() * 0.5) * Math.PI / 2;
@@ -1601,16 +1612,32 @@ function usePower(p) {
   }
   popups.push({ x: p.x, y: p.y - sizeOf(p), text: def.name.toUpperCase() + '!', color: def.color, life: 0.9 });
   if (p === myPlayer()) buzz('medium');
+  cpuAnswer(opp);
   sfx(300, 0.25, 'sawtooth', 0.04, 3);
 }
 
+// The CPU plays like a person: it looks at the game a few times a second, sometimes spots a good moment
+// to use its power, and presses it after a reaction time. By then the moment may have passed.
+function cpuPlan(p) {
+  p.aiPlan = elapsed + p.ai.react * (0.7 + Math.random() * 0.6);
+}
 function cpuThink(p, dt) {
-  const d = DIFFICULTIES[difficulty];
+  if (p.aiPlan !== null) {
+    if (elapsed >= p.aiPlan) { p.aiPlan = null; usePower(p); }
+    return;
+  }
   p.aiTimer -= dt;
   if (p.powerCd > 0 || p.frozen > 0 || p.aiTimer > 0) return;
-  p.aiTimer = d.think;
+  p.aiTimer = 0.25;
+  if (Math.random() < p.ai.random * 0.25) return cpuPlan(p);
+  if (cpuWants(p) && Math.random() < p.ai.skill * 0.5) cpuPlan(p);
+}
+// When you use your power, the CPU may answer with its own
+function cpuAnswer(cpu) {
+  if (cpu?.isCpu && cpu.aiPlan === null && cpu.powerCd <= 0 && cpu.frozen <= 0 && Math.random() < cpu.ai.counter) cpuPlan(cpu);
+}
+function cpuWants(p) {
   const opp = players[1 - p.i];
-  if (Math.random() > d.smart) { if (Math.random() < 0.15) usePower(p); return; }
   const dist = Math.hypot(opp.x - p.x, opp.y - p.y), R = orbitOf(p);
   const near = (spikes, target, k) => spikes.some(s => Math.hypot(s.x - target.x, s.y - target.y) < sizeOf(target) * k);
   const want = {
@@ -1621,7 +1648,7 @@ function cpuThink(p, dt) {
     heal: p.hp <= p.maxHp - 10,
     blink: dist > R * 1.5,
   };
-  if (want[p.power]) usePower(p);
+  return want[p.power];
 }
 
 // ---------- Update ----------
@@ -2380,16 +2407,20 @@ function drawHud() {
 const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 function drawPowerButtons() {
   [myIdx(), 1 - myIdx()].forEach((pi, i) => {
-    const p = players[pi], b = buttons[i], def = POWERS[p.power];
+    const p = players[pi], def = POWERS[p.power];
     const ready = p.powerCd <= 0 && p.frozen <= 0;
+    // Yours is a big button; the other player's is a small read-only indicator in the corner
+    const big = buttons[i], mine = i === 0;
+    const r = mine ? big.r : big.r * 0.6;
+    const b = { x: mine ? big.x : big.x + big.r - r, y: big.y + big.r - r, r };
     ctx.save();
-    ctx.globalAlpha = i === 0 ? 1 : 0.55;
+    ctx.globalAlpha = mine ? 1 : 0.6;
     ctx.fillStyle = '#121216';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
     // Recharge ring
     const frac = 1 - p.powerCd / def.cd;
-    ctx.strokeStyle = ready ? def.color : '#555'; ctx.lineWidth = 5;
-    if (ready) { ctx.shadowColor = def.color; ctx.shadowBlur = 10 + 6 * Math.sin(clock * 6); }
+    ctx.strokeStyle = ready ? def.color : '#555'; ctx.lineWidth = mine ? 5 : 3;
+    if (ready && mine) { ctx.shadowColor = def.color; ctx.shadowBlur = 10 + 6 * Math.sin(clock * 6); }
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r - 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac); ctx.stroke();
     ctx.shadowBlur = 0;
     ctx.fillStyle = ready ? '#fff' : '#888';
@@ -2401,7 +2432,7 @@ function drawPowerButtons() {
       ctx.fillText(Math.ceil(Math.max(p.powerCd / mods.powerRate, p.frozen)) + 's', b.x, b.y + b.r * 0.28);
     }
     ctx.fillStyle = p.color; ctx.font = 'bold 11px system-ui, sans-serif';
-    const label = i === 1 ? (online ? 'Opponent' : 'CPU') : coarse ? '' : 'A / Space';
+    const label = i === 1 ? (online ? 'Their power' : 'CPU power') : coarse ? 'Your power' : 'Your power · A / Space';
     if (label) ctx.fillText(label, b.x, b.y - b.r - 10);
     ctx.restore();
   });
