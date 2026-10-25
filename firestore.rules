@@ -8,6 +8,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // The account owns this username (usernames/{lowercase name} → { uid })
+    function ownsName(n) {
+      return n is string && exists(/databases/$(database)/documents/usernames/$(n.lower()))
+        && get(/databases/$(database)/documents/usernames/$(n.lower())).data.uid == request.auth.uid;
+    }
+
     function validUser(d) {
       return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
@@ -25,12 +31,15 @@ service cloud.firestore {
 
       allow create: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
+        && ownsName(request.resource.data.name)
         && request.resource.data.score == 100
         && request.resource.data.coins == 50
         && request.resource.data.skins.size() == 2;
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
+        // A new name has to be a username this account owns
+        && (request.resource.data.name == resource.data.name || ownsName(request.resource.data.name))
         // A two-player match moves the score by at most 100
         && request.resource.data.score - resource.data.score <= 100
         && resource.data.score - request.resource.data.score <= 100
@@ -43,6 +52,16 @@ service cloud.firestore {
 
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Usernames are unique: the doc id is the lowercase username, and it records who owns it.
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if signedIn()
+        && name.matches('^[a-z0-9_.]{3,16}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
     }
 
     // Friend groups. The doc id is the 6-character invite code.

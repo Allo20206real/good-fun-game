@@ -18,6 +18,15 @@ Accounts, coins, groups and leaderboards are stored in Firebase, Google's free a
 2. Pick a location near your players and choose **Start in production mode**.
 3. When it's ready, open the **Rules** tab, delete everything there, paste the full contents of [`firestore.rules`](firestore.rules) from this repo, and click **Publish**.
 
+## 3b. Create the Realtime Database (for online matches)
+
+Online two-player matches (matchmaking and live play) use Firebase's Realtime Database, which is much faster for sending moves between phones.
+
+1. Open **Build → Realtime Database** and click **Create Database**.
+2. Pick a location (the same region as Firestore is fine) and choose **Start in locked mode**.
+3. Open the **Rules** tab, replace everything with the contents of [`database.rules.json`](database.rules.json), and click **Publish**.
+4. Copy the database's URL from the top of the **Data** tab (it looks like `https://bounce-duel-default-rtdb.europe-west1.firebasedatabase.app`) and put it in `databaseURL` in `index.html`.
+
 ## 4. Get the two keys the game needs
 
 1. Click the gear icon next to **Project Overview → Project settings**.

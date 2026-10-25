@@ -157,6 +157,38 @@
   .chip canvas { width: 16px; height: 16px; border-radius: 3px; }
   .desc { font-size: 13px; margin-top: 6px; min-height: 1.5em; }
   .event-flag { background: var(--event); color: #12001f; font-weight: 800; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+  /* Match setup: big, easy pickers */
+  .setup-top { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+  .setup-card { width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 18px; text-align: left; }
+  .big-preview { width: 150px; height: 150px; align-self: center; background: #000; border-radius: 16px; border: 1px solid var(--line); }
+  .name-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; font-size: 17px; }
+  .name-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .name-row form { display: flex; gap: 8px; flex: 1; flex-direction: row; }
+  .section-label { font-size: 13px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
+  .tile {
+    background: #17171d; color: #fff; border: 2px solid #2c2c35; border-radius: 14px; padding: 12px 8px; min-height: 68px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    font-size: 16px; font-weight: 800; text-align: center; line-height: 1.2;
+  }
+  .tile:hover { background: #22222b; }
+  .tile small { font-size: 12px; font-weight: 500; color: var(--muted); }
+  .tile.on { border-color: #fff; background: #fff; color: #000; }
+  .tile.on small { color: #444; }
+  .tile canvas { width: 36px; height: 36px; border-radius: 6px; }
+  .sticky-go { position: sticky; bottom: 0; width: min(560px, 100%); display: flex; flex-direction: column; gap: 8px;
+    padding: 14px 0 4px; background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.95) 25%); }
+  .sticky-go #startBtn { padding: 18px; font-size: 20px; }
+  .vs-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; max-width: 560px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; text-align: left; }
+  .vs-card .who { min-width: 0; }
+  .vs-card .who b { display: block; font-size: 19px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vs-card .clock { font-size: 28px; font-weight: 900; font-variant-numeric: tabular-nums; }
+  .spinner { width: 72px; height: 72px; border: 7px solid #2a2a33; border-top-color: #fff; border-radius: 50%; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 3s; } }
+  .mm-title { font-size: clamp(32px, 9vw, 52px) !important; }
+  .mm-timer { font-size: 44px; font-weight: 900; font-variant-numeric: tabular-nums; }
   #winText { font-size: clamp(36px, 9vw, 64px); font-weight: 900; }
   #results { display: flex; flex-direction: column; gap: 8px; font-size: 16px; width: min(420px, 100%); }
   #results .line { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; text-align: left; }
@@ -205,12 +237,38 @@
 <div id="setup" class="overlay hidden">
   <div class="inner">
     <h2 id="setupTitle"></h2>
-    <div id="setupEvent"></div>
-    <div id="panels"></div>
-    <div class="menu">
+    <div id="setupTop" class="setup-top"></div>
+    <div id="setupBody" class="setup-card"></div>
+    <div class="sticky-go">
       <button id="startBtn">Start</button>
       <button class="ghost" id="setupBack">Back</button>
     </div>
+  </div>
+</div>
+
+<!-- Online matchmaking -->
+<div id="mm" class="overlay hidden">
+  <div class="inner">
+    <div class="spinner" id="mmSpin" aria-hidden="true"></div>
+    <h1 class="mm-title" id="mmTitle">Matchmaking…</h1>
+    <p id="mmText">Looking for another player</p>
+    <div class="mm-timer" id="mmTimer"></div>
+    <div class="menu"><button class="ghost" id="mmCancel">Cancel</button></div>
+  </div>
+</div>
+
+<!-- Pick a username (accounts made before usernames existed) -->
+<div id="unameScreen" class="overlay hidden">
+  <div class="inner">
+    <h2>Pick your username</h2>
+    <p>This is the name other players see in your battles. You can change it later in Profile.</p>
+    <form id="unameForm" class="card" style="width:min(380px,100%);text-align:left" novalidate>
+      <label class="field">Username <input id="unameInput" maxlength="16" autocapitalize="off" autocomplete="username" spellcheck="false"></label>
+      <p class="fine">3–16 letters, numbers, dots or underscores.</p>
+      <p class="err" id="unameErr"></p>
+      <button type="submit">Save username</button>
+    </form>
+    <button class="link" id="unameLogout">Log out</button>
   </div>
 </div>
 
@@ -230,10 +288,15 @@
 // ============================================================================
 // Firebase settings. Fill these in from your Firebase project (FIREBASE_SETUP.md).
 // ============================================================================
-const FIREBASE_CONFIG = { apiKey: 'AIzaSyClzCpoDFc1ogYlb41dJAN9oaAJd1h39a4', projectId: 'bounce-duel' };
+const FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyClzCpoDFc1ogYlb41dJAN9oaAJd1h39a4',
+  projectId: 'bounce-duel',
+  databaseURL: '',   // Realtime Database URL, for online matches
+};
 
 const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the local emulator
 const ONLINE = !!(cfg.apiKey && cfg.projectId);
+const MULTIPLAYER = ONLINE && !!cfg.databaseURL;
 const PRIVACY_URL = 'https://allo20206real.github.io/good-fun-game/privacy.html';
 
 // ---------- Small helpers ----------
@@ -398,6 +461,55 @@ async function topPlayers(sess, limit = 25) {
 }
 
 // ============================================================================
+// Realtime Database (matchmaking and live online matches)
+// ============================================================================
+const SERVER_TIME = { '.sv': 'timestamp' };
+function rtdbUrl(path, token) {
+  const ns = cfg.databaseNs ? `ns=${cfg.databaseNs}&` : '';
+  return `${cfg.databaseURL}/${path}.json?${ns}auth=${encodeURIComponent(token)}`;
+}
+async function rtdb(method, path, body) {
+  const { res, body: out } = await request(rtdbUrl(path, await idToken(auth1)), {
+    method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 401 || res.status === 403) throw new GameError('DENIED');
+  if (!res.ok) throw new GameError("Couldn't reach the match server. Check your internet connection.");
+  return out;
+}
+// Put `data` at a slash path inside a plain object, returning a new object
+function setAt(root, path, data) {
+  const keys = path.split('/').filter(Boolean);
+  if (!keys.length) return data;
+  const out = root && typeof root === 'object' ? { ...root } : {};
+  let node = out;
+  for (const k of keys.slice(0, -1)) {
+    node[k] = node[k] && typeof node[k] === 'object' ? { ...node[k] } : {};
+    node = node[k];
+  }
+  const last = keys[keys.length - 1];
+  if (data === null) delete node[last]; else node[last] = data;
+  return out;
+}
+// Live copy of a database path. Firebase streams every change over Server-Sent Events.
+function rtdbStream(path, onData, onError) {
+  let mirror = null, es = null, closed = false;
+  idToken(auth1).then(token => {
+    if (closed) return;
+    es = new EventSource(rtdbUrl(path, token));
+    es.addEventListener('put', e => { const m = JSON.parse(e.data); mirror = setAt(mirror, m.path, m.data); onData(mirror); });
+    es.addEventListener('patch', e => {
+      const m = JSON.parse(e.data);
+      for (const [k, v] of Object.entries(m.data || {})) mirror = setAt(mirror, `${m.path}/${k}`, v);
+      onData(mirror);
+    });
+    es.addEventListener('cancel', () => onError?.('denied'));
+    es.addEventListener('auth_revoked', () => onError?.('auth'));
+  }).catch(e => onError?.(e));
+  return () => { closed = true; es?.close(); };
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ============================================================================
 // Game data
 // ============================================================================
 const COLORS = ['#ff4d5e', '#4da6ff'];
@@ -492,10 +604,9 @@ const msToMidnight = () => { const n = new Date(); return new Date(n.getFullYear
 // ============================================================================
 // Accounts
 // ============================================================================
-let auth1 = null, me = null;     // Player 1 (the person signed in on this device)
-let auth2 = null, p2me = null;   // Player 2 in a two-player match (this visit only)
+let auth1 = null, me = null;     // the person signed in on this device
 
-// Basic filter for names other players can see (display names, group names)
+// Basic filter for names other players can see (usernames, match names, group names)
 const BLOCKED_WORDS = ['fuck', 'shit', 'bitch', 'cunt', 'pussy', 'nigg', 'fag', 'whore', 'slut', 'rape', 'nazi', 'asshole', 'retard', 'penis', 'vagina'];
 const isRude = s => { const t = s.toLowerCase().replace(/[^a-z]/g, ''); return BLOCKED_WORDS.some(w => t.includes(w)); };
 function cleanName(s, max) {
@@ -504,10 +615,30 @@ function cleanName(s, max) {
   if (isRude(s)) throw new GameError('Please pick a different name.');
   return s;
 }
-function newUserDoc(email) {
-  const base = (email.split('@')[0] || 'Player').slice(0, 16);
+
+// ---------- Usernames: unique, claimed in the usernames collection ----------
+const USERNAME_RE = /^[A-Za-z0-9_.]{3,16}$/;
+function checkUsername(name) {
+  name = name.trim();
+  if (!USERNAME_RE.test(name)) throw new GameError('Usernames are 3–16 letters, numbers, dots or underscores (no spaces).');
+  if (isRude(name)) throw new GameError('Please pick a different username.');
+  return name;
+}
+async function usernameOwner(name) {
+  const d = await getDoc(null, 'usernames/' + name.toLowerCase());
+  return d ? d.uid : null;
+}
+async function claimUsername(sess, name) {
+  try { await createDoc(sess, 'usernames/' + name.toLowerCase(), { uid: sess.uid }); }
+  catch (e) {
+    if (e.message !== 'EXISTS') throw e;
+    if (await usernameOwner(name) !== sess.uid) throw new GameError('That username is taken. Try another one.');
+  }
+}
+
+function newUserDoc(name) {
   return {
-    name: isRude(base) ? 'Player' : base, score: START_SCORE, coins: START_COINS,
+    name, score: START_SCORE, coins: START_COINS,
     skins: FREE_SKINS.slice(), wins1p: 0, losses1p: 0, wins2p: 0, losses2p: 0, groups: [],
     daily: { day: '', progress: {}, claimed: [] }, streak: { last: '', count: 0 },
   };
@@ -520,23 +651,28 @@ function normalizeUser(d) {
   for (const k of ['score', 'coins', 'wins1p', 'losses1p', 'wins2p', 'losses2p']) d[k] = d[k] || 0;
   return d;
 }
-async function loadOrCreateUser(sess) {
-  let d = await getDoc(sess, 'users/' + sess.uid);
-  if (!d) {
-    d = newUserDoc(sess.email || '');
-    try { await createDoc(sess, 'users/' + sess.uid, d); }
-    catch (e) { if (e.message !== 'EXISTS') throw e; d = await getDoc(sess, 'users/' + sess.uid); }
-  }
-  return normalizeUser(d);
+// Returns the player's saved data, or null for an account that hasn't picked a username yet
+async function loadUser(sess) {
+  const d = await getDoc(sess, 'users/' + sess.uid);
+  return d ? normalizeUser(d) : null;
+}
+async function createUser(sess, username) {
+  const d = newUserDoc(username);
+  try { await createDoc(sess, 'users/' + sess.uid, d); return d; }
+  catch (e) { if (e.message !== 'EXISTS') throw e; return loadUser(sess); }
+}
+// True when the account's name is a username it owns (older accounts may not have one yet)
+async function hasUsername(sess, doc) {
+  return !!doc && USERNAME_RE.test(doc.name) && await usernameOwner(doc.name) === sess.uid;
 }
 // Read the latest copy, change it, save it back (keeps two devices from overwriting each other)
 async function mutateUser(sess, fn) {
-  const d = normalizeUser(await getDoc(sess, 'users/' + sess.uid) || await loadOrCreateUser(sess));
+  const d = await loadUser(sess);
+  if (!d) throw new GameError('Pick a username first.');
   fn(d);
   const { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak } = d;
   await updateDoc(sess, 'users/' + sess.uid, { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak });
   if (sess === auth1) me = d;
-  if (sess === auth2) p2me = d;
   return d;
 }
 function rollDaily(d) {
@@ -547,20 +683,53 @@ function login1(sess, doc) {
   auth1 = sess; me = doc;
   store.set('bd.auth', { uid: sess.uid, email: sess.email, refreshToken: sess.refreshToken });
 }
-function logout1() { auth1 = null; me = null; store.set('bd.auth', null); }
+function logout1() { auth1 = null; me = null; needsUsername = false; store.set('bd.auth', null); }
 
+let needsUsername = false;   // signed in, but the account has no username yet
+async function finishLogin(sess) {
+  const doc = await loadUser(sess);
+  login1(sess, doc);
+  needsUsername = !(await hasUsername(sess, doc));
+  if (needsUsername) showUsernamePicker(doc ? doc.name : '');
+  return doc;
+}
 async function restoreSession() {
   const saved = store.get('bd.auth', null);
   if (!ONLINE || !saved?.refreshToken) return;
   const sess = { uid: saved.uid, email: saved.email, refreshToken: saved.refreshToken, idToken: '', expires: 0 };
-  try {
-    auth1 = sess;
-    me = await loadOrCreateUser(sess);
-  } catch (e) {
+  try { await finishLogin(sess); }
+  catch (e) {
     auth1 = null; me = null;
     if (/signed out/.test(e.message)) store.set('bd.auth', null);
   }
 }
+
+// Username picker for accounts that don't have one (older accounts, or a sign-up that lost a race)
+function showUsernamePicker(suggest) {
+  screens.forEach(x => $(x).classList.add('hidden'));
+  $('unameScreen').classList.remove('hidden');
+  $('unameInput').value = (suggest || '').replace(/[^A-Za-z0-9_.]/g, '').slice(0, 16);
+  $('unameErr').textContent = '';
+}
+$('unameForm').onsubmit = e => {
+  e.preventDefault();
+  busy(e.target.querySelector('button'), async () => {
+    const name = checkUsername($('unameInput').value);
+    await claimUsername(auth1, name);
+    if (me) {
+      const old = me.name;
+      await mutateUser(auth1, d => { d.name = name; });
+      if (old.toLowerCase() !== name.toLowerCase() && await usernameOwner(old).catch(() => null) === auth1.uid) await deleteDoc(auth1, 'usernames/' + old.toLowerCase()).catch(() => {});
+    } else {
+      me = await createUser(auth1, name);
+    }
+    needsUsername = false;
+    $('unameScreen').classList.add('hidden');
+    toast(`You're ${name}!`);
+    show('app');
+  }, $('unameErr'));
+};
+$('unameLogout').onclick = () => { logout1(); $('unameScreen').classList.add('hidden'); show('app'); };
 
 // ============================================================================
 // Canvas & layout
@@ -575,16 +744,21 @@ let AX = 0, AY = 0, AS = 0;      // the square room: left, top, side
 let buttons = [];                // power buttons: {x, y, r}
 let mods = { ...BASE_MODS };     // event rules for the current match
 
+let rescaleCubes = null;   // set once the players exist
 function resize() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
   canvas.width = W * DPR; canvas.height = H * DPR;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-  U = Math.max(0.55, Math.min(1, Math.min(W, H) / 720));
+  const oAX = AX, oAY = AY, oAS = AS;
   // Half the screen's area, as a square in the middle (leaving room for the HP bars)
-  AS = Math.min(Math.sqrt(W * H / 2), W - 32, H - 120) * mods.room;
+  const room = Math.min(Math.sqrt(W * H / 2), W - 32, H - 120);
+  // Everything is sized relative to the room, so every phone sees the same match
+  U = room / 600;
+  AS = room * mods.room;
   AX = (W - AS) / 2;
   AY = (H - AS) / 2;
+  if (oAS) rescaleCubes?.(oAX, oAY, oAS);
   const r = Math.max(30, 44 * U);
   buttons = [{ x: 16 + r, y: H - 16 - r, r }, { x: W - 16 - r, y: H - 16 - r, r }];
 }
@@ -611,8 +785,14 @@ let loadouts = store.get('bd.loadouts', [
   { skin: 'classic', spike: 'classic', power: 'dash' },
   { skin: 'classic', spike: 'classic', power: 'shield' },
 ]);
-let names = ['', ''];
 let players = [];
+// Keep cubes in the same spot in the room when the screen size changes (e.g. the phone turns)
+rescaleCubes = (oAX, oAY, oAS) => {
+  for (const p of players) {
+    p.x = AX + (p.x - oAX) / oAS * AS; p.y = AY + (p.y - oAY) / oAS * AS;
+    p.vx *= AS / oAS; p.vy *= AS / oAS;
+  }
+};
 let state = 'menu';          // menu | place | aim | countdown | play | over
 let placing = 0;
 let mouse = { x: W / 2, y: H / 2 };
@@ -685,7 +865,7 @@ function sfx(freq, dur = 0.07, type = 'square', vol = 0.04, slide = 0) {
 // ============================================================================
 // Screens and tabs
 // ============================================================================
-const screens = ['app', 'setup', 'over'];
+const screens = ['app', 'setup', 'over', 'mm'];
 function show(name) {
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
   if (name !== 'over') { state = 'menu'; players = []; }
@@ -738,9 +918,14 @@ $('tabBody').addEventListener('click', async e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   const act = b.dataset.act;
-  if (act === 'play1p' || act === 'play2p' || act === 'playEvent') {
-    mode = act === 'play2p' ? '2p' : '1p'; isEvent = act === 'playEvent';
+  if (act === 'play1p' || act === 'playEvent') {
+    mode = '1p'; isEvent = act === 'playEvent';
     openSetup();
+  } else if (act === 'playOnline') {
+    if (!MULTIPLAYER) return toast('Online matches are not switched on yet.');
+    if (!me) { tab = 'profile'; renderApp(); return toast('Log in or create an account to play online.'); }
+    if (needsUsername) return showUsernamePicker(me.name);
+    startMatchmaking();
   } else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
   else if (act === 'claimDaily') busy(b, claimDailyReward);
   else if (act === 'claimChallenge') busy(b, () => claimChallenge(b.dataset.id));
@@ -803,7 +988,7 @@ function playTab() {
     ${installCard()}
     <div class="big-buttons">
       <button data-act="play1p">Single player</button>
-      <button data-act="play2p">Two players</button>
+      <button data-act="playOnline">Two players<br><span style="font-size:13px;font-weight:600">Play online</span></button>
     </div>
     <div class="card event">
       <div class="row between"><span class="eyebrow" style="color:var(--event)">This week's event</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
@@ -987,10 +1172,10 @@ function profileTab() {
   if (me) {
     return `
       <div class="card">
-        <div class="eyebrow">Signed in as</div>
-        <div style="font-weight:700; overflow-wrap:anywhere">${escapeHtml(auth1.email || '')}</div>
-        <form id="nameForm" class="row"><input class="grow" maxlength="16" value="${escapeHtml(me.name)}" aria-label="Display name"><button class="small">Save name</button></form>
+        <div class="eyebrow">Username</div>
+        <form id="nameForm" class="row"><input class="grow" maxlength="16" value="${escapeHtml(me.name)}" aria-label="Username" autocapitalize="off" spellcheck="false"><button class="small">Change</button></form>
         <p class="err" id="nameErr"></p>
+        <div class="fine" style="overflow-wrap:anywhere">Logged in with ${escapeHtml(auth1.email || '')}</div>
         <div class="row between">
           <div><div class="fine">Two-player score</div><div class="big-num">${me.score}</div></div>
           <div style="text-align:right"><div class="fine">Coins</div><div class="big-num" style="color:var(--coin)">${me.coins}</div></div>
@@ -1022,12 +1207,13 @@ function profileTab() {
         <button class="small ${creating ? 'ghost' : ''}" data-pm="login">Log in</button>
       </div>
       <form id="authForm" novalidate>
+        ${creating ? '<label class="field">Username <input id="authUser" maxlength="16" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="This is your name in battles"></label>' : ''}
         <label class="field">Email <input id="authEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
         ${resetting ? '' : `<label class="field">Password <input id="authPass" type="password" autocomplete="${creating ? 'new-password' : 'current-password'}"></label>`}
         <p class="err" id="authErr"></p>
         <button type="submit">${creating ? 'Create account' : resetting ? 'Send reset email' : 'Log in'}</button>
       </form>
-      ${creating ? `<p class="fine">New accounts start with a score of 100 and ${START_COINS} coins. Log in with the same email and password on any device.</p>`
+      ${creating ? `<p class="fine">Usernames are 3–16 letters, numbers, dots or underscores. New accounts start with a score of 100 and ${START_COINS} coins. Log in with the same email and password on any device.</p>`
         : resetting ? '<button class="link" data-pm="login">Back to log in</button>' : '<button class="link" data-pm="reset">Forgot your password?</button>'}
     </div>${sound}`;
 }
@@ -1041,11 +1227,22 @@ function wireProfile() {
     const email = $('authEmail').value, pass = $('authPass') ? $('authPass').value : '';
     busy(btn, async () => {
       if (profileMode === 'reset') { await sendReset(email); $('authErr').innerHTML = '<span class="ok">Check your email for a link to reset your password.</span>'; return; }
-      const sess = profileMode === 'create' ? await signUp(email, pass) : await signIn(email, pass);
-      if (auth2 && auth2.uid === sess.uid) { auth2 = null; p2me = null; }
-      const doc = await loadOrCreateUser(sess);
-      login1(sess, doc);
-      toast(profileMode === 'create' ? `Account created. You got ${START_COINS} coins!` : `Welcome back, ${doc.name}!`);
+      if (profileMode === 'create') {
+        // Check the username before making the account, so a taken name doesn't leave a half-made account
+        const name = checkUsername($('authUser').value);
+        if (await usernameOwner(name)) throw new GameError('That username is taken. Try another one.');
+        const sess = await signUp(email, pass);
+        login1(sess, null);
+        try { await claimUsername(sess, name); }
+        catch (e) { needsUsername = true; showUsernamePicker(name); throw new GameError('That username was just taken. Pick another one.'); }
+        me = await createUser(sess, name);
+        toast(`Welcome, ${name}! You got ${START_COINS} coins.`);
+      } else {
+        const sess = await signIn(email, pass);
+        const doc = await finishLogin(sess);
+        if (needsUsername) return;
+        toast(`Welcome back, ${doc.name}!`);
+      }
       tab = 'play'; renderApp();
     }, $('authErr'));
   };
@@ -1056,15 +1253,21 @@ async function deleteAccount(password) {
   if (sess.uid !== auth1.uid) throw new GameError('Wrong email or password.');
   auth1 = sess;
   for (const code of me.groups) { try { await removeFromGroup(code); } catch {} }
+  if (await usernameOwner(me.name).catch(() => null) === sess.uid) await deleteDoc(sess, 'usernames/' + me.name.toLowerCase());
   await deleteDoc(sess, 'users/' + sess.uid);
   await authPost('accounts:delete', { idToken: sess.idToken });
   logout1(); confirmDelete = false;
   toast('Your account was deleted'); renderApp();
 }
 async function changeName(name) {
-  name = cleanName(name, 16);
+  name = checkUsername(name);
+  const old = me.name;
+  if (name === old) return;
+  const sameName = name.toLowerCase() === old.toLowerCase();   // only the capital letters changed
+  if (!sameName) await claimUsername(auth1, name);
   await mutateUser(auth1, d => { d.name = name; });
-  toast('Name saved'); renderApp();
+  if (!sameName && await usernameOwner(old).catch(() => null) === auth1.uid) await deleteDoc(auth1, 'usernames/' + old.toLowerCase()).catch(() => {});
+  toast(`Your username is now ${name}`); renderApp();
 }
 
 // ---------- Coins: daily reward, challenges, shop ----------
@@ -1113,132 +1316,75 @@ function tickTimers() {
 setInterval(tickTimers, 1000);
 
 // ============================================================================
-// Match setup
+// Match setup (single player, and choosing your fighter in an online match)
 // ============================================================================
-function defaultName(i) {
-  const doc = i === 0 ? me : p2me;
-  return doc ? doc.name : `Player ${i + 1}`;
-}
-function ownedSkins(i) { const doc = i === 0 ? me : p2me; return doc ? doc.skins : FREE_SKINS; }
+const SPIKE_SHORT = { classic: 'Balanced', twin: 'Two spikes', saw: 'Big blade', lance: 'Long and fast', comet: 'Swings in and out' };
+const POWER_SHORT = { dash: '2× speed', shield: 'No damage', freeze: 'Stops them', rage: 'Bigger spike', heal: '+4 HP', blink: 'Teleport' };
+let matchName = '';        // a name just for this match ('' means your username)
+let renaming = false;
+const myLoadout = () => loadouts[0];
+const myMatchName = () => (matchName && !isRude(matchName) ? matchName : me ? me.name : 'Player');
+const ownedSkins = () => (me ? me.skins : FREE_SKINS);
 
 function openSetup() {
-  names = ['', ''];
+  matchName = ''; renaming = false;
   show('setup');
   renderSetup();
 }
-$('setupBack').onclick = () => show('app');
+$('setupBack').onclick = () => { if (online) leaveOnline('You left the match.'); else show('app'); };
 
 function renderSetup() {
-  $('setupTitle').textContent = isEvent ? 'Event match' : mode === '1p' ? 'Single player' : 'Two players';
-  const w = weekInfo();
-  $('setupEvent').innerHTML = isEvent ? `<span class="event-flag">${w.event.name}: ${w.event.desc}</span>` : '';
-  const wrap = $('panels');
-  wrap.innerHTML = '';
-  const humans = mode === '1p' ? 1 : 2;
-  for (let i = 0; i < humans; i++) wrap.appendChild(playerPanel(i));
-  if (mode === '1p') wrap.appendChild(cpuPanel());
-}
-
-function acctHtml(i) {
-  const doc = i === 0 ? me : p2me;
-  if (doc) {
-    return `Signed in as <b>${escapeHtml(doc.name)}</b><br>Score <b>${doc.score}</b> · ${coinHtml(doc.coins)}` +
-      (i === 1 ? ` · <button class="link" data-act2="p2out">Sign out</button>` : '');
-  }
-  if (!ONLINE) return 'Guest';
-  if (i === 0) return `Guest · <button class="link" data-act2="toProfile">Log in</button> to earn coins${mode === '2p' ? ' and score' : ''}`;
-  return `<details><summary>Sign in to earn coins and score</summary>
-    <div class="mini-form">
-      <input type="email" id="p2email" placeholder="Email" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <input type="password" id="p2pass" placeholder="Password" autocomplete="off">
-      <div class="row"><button class="small" data-act2="p2in">Log in</button><button class="small ghost" data-act2="p2new">Create account</button></div>
-      <div class="err" id="p2err"></div>
-    </div></details>`;
-}
-
-function playerPanel(i) {
-  const el = document.createElement('section');
-  el.className = 'panel';
-  el.dataset.i = i;
-  el.innerHTML = `
-    <div class="panel-head">
-      <canvas class="preview" data-i="${i}"></canvas>
-      <div class="who">
-        <h2 style="color:${COLORS[i]}">Player ${i + 1}</h2>
-        <div class="acct">${acctHtml(i)}</div>
-      </div>
-    </div>
-    <label class="pick"><span>Name</span><input id="name${i}" maxlength="16"></label>
-    <div class="pick"><span>Skin</span><div class="chips" data-kind="skin"></div><p class="desc" data-desc="skin"></p></div>
-    <div class="pick"><span>Spike</span><div class="chips" data-kind="spike"></div><p class="desc" data-desc="spike"></p></div>
-    <div class="pick"><span>Power</span><div class="chips" data-kind="power"></div><p class="desc" data-desc="power"></p></div>`;
-  const nameInput = el.querySelector('input[id^=name]');
-  nameInput.value = names[i] || defaultName(i);
-  nameInput.oninput = () => { names[i] = nameInput.value; };
-  fillChips(el, i);
-  el.addEventListener('click', e => {
-    const act = e.target.closest('[data-act2]');
-    if (act) return panelAction(act.dataset.act2, act);
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    loadouts[i][chip.dataset.kind] = chip.dataset.id;
-    store.set('bd.loadouts', loadouts);
-    fillChips(el, i);
-  });
-  return el;
-}
-
-function panelAction(act, btn) {
-  if (act === 'toProfile') { tab = 'profile'; show('app'); return; }
-  if (act === 'p2out') { auth2 = null; p2me = null; names[1] = ''; renderSetup(); return; }
-  const email = $('p2email').value, pass = $('p2pass').value;
-  busy(btn, async () => {
-    const sess = act === 'p2new' ? await signUp(email, pass) : await signIn(email, pass);
-    if (auth1 && sess.uid === auth1.uid) throw new GameError('Player 1 is already signed in with this account.');
-    const doc = await loadOrCreateUser(sess);
-    auth2 = sess; p2me = doc; names[1] = '';
-    renderSetup();
-  }, $('p2err'));
-}
-
-function fillChips(el, i) {
-  const lo = loadouts[i], owned = ownedSkins(i);
+  const w = weekInfo(), lo = myLoadout(), owned = ownedSkins();
   if (!owned.includes(lo.skin)) lo.skin = 'classic';
-  const skinBox = el.querySelector('[data-kind=skin]');
-  skinBox.innerHTML = SKINS.filter(s => owned.includes(s.id)).map(s =>
-    `<button class="chip ${lo.skin === s.id ? 'on' : ''}" data-kind="skin" data-id="${s.id}"><canvas width="32" height="32" data-skin="${s.id}"></canvas>${s.name}</button>`).join('');
-  drawStaticSkins(skinBox);
-  el.querySelector('[data-desc=skin]').textContent = owned.length < SKINS.length ? 'Get more skins in the Shop.' : 'You own every skin!';
-  el.querySelector('[data-kind=spike]').innerHTML = Object.entries(SPIKES).map(([id, s]) =>
-    `<button class="chip ${lo.spike === id ? 'on' : ''}" data-kind="spike" data-id="${id}">${s.name}</button>`).join('');
-  el.querySelector('[data-desc=spike]').textContent = SPIKES[lo.spike].desc;
-  el.querySelector('[data-kind=power]').innerHTML = Object.entries(POWERS).map(([id, p]) =>
-    `<button class="chip ${lo.power === id ? 'on' : ''}" data-kind="power" data-id="${id}">${p.name}</button>`).join('');
-  el.querySelector('[data-desc=power]').textContent = `${POWERS[lo.power].desc} Recharges in ${POWERS[lo.power].cd}s.`;
+  $('setupTitle').textContent = online ? 'Choose your fighter' : isEvent ? 'Event match' : 'Single player';
+  $('setupTop').innerHTML = online ? onlineVsCard() : isEvent ? `<span class="event-flag">${w.event.name}: ${w.event.desc}</span>` : '';
+  const nameRow = renaming
+    ? `<div class="name-row"><form id="renameForm"><input id="renameInput" class="grow" maxlength="16" value="${escapeHtml(myMatchName())}" aria-label="Name for this match"><button class="small">Save</button></form></div>`
+    : `<div class="name-row"><span style="min-width:0">Name: <b>${escapeHtml(myMatchName())}</b></span><button class="small ghost" data-set="rename">Change name</button></div>`;
+  const section = (label, tiles) => `<div><div class="section-label">${label}</div><div class="picker">${tiles}</div></div>`;
+  const tile = (kind, id, on, body) => `<button class="tile ${on ? 'on' : ''}" data-kind="${kind}" data-id="${id}">${body}</button>`;
+  const skins = SKINS.filter(x => owned.includes(x.id)).map(x => tile('skin', x.id, lo.skin === x.id, `<canvas width="72" height="72" data-skin="${x.id}"></canvas>${x.name}`)).join('');
+  const spikes = Object.entries(SPIKES).map(([id, x]) => tile('spike', id, lo.spike === id, `${x.name}<small>${SPIKE_SHORT[id]}</small>`)).join('');
+  const powers = Object.entries(POWERS).map(([id, x]) => tile('power', id, lo.power === id, `${x.name}<small>${POWER_SHORT[id]}</small>`)).join('');
+  const cpu = online ? '' : section('CPU difficulty', Object.entries(DIFFICULTIES).map(([id, d]) =>
+    tile('difficulty', id, difficulty === id, `${d.name}<small>Win: ${d.coins}${isEvent ? ' +50%' : ''} coins</small>`)).join(''));
+  $('setupBody').innerHTML = `<canvas class="big-preview" id="bigPreview"></canvas>${nameRow}
+    ${section('Skin', skins)}${owned.length < SKINS.length ? '<p class="fine" style="margin-top:-12px">Get more skins in the Shop.</p>' : ''}
+    ${section('Spike', spikes)}${section('Power', powers)}${cpu}`;
+  drawStaticSkins($('setupBody'));
+  const go = $('startBtn');
+  if (online) {
+    go.textContent = online.ready ? `Waiting for ${online.oppName}…` : 'Ready!';
+    go.disabled = online.ready;
+    $('setupBack').textContent = 'Leave match';
+  } else {
+    go.textContent = 'Start'; go.disabled = false;
+    $('setupBack').textContent = 'Back';
+  }
+  if (renaming) { const i = $('renameInput'); i.focus(); i.select(); }
 }
 
-function cpuPanel() {
-  const el = document.createElement('section');
-  el.className = 'panel';
-  const draw = () => {
-    el.innerHTML = `
-      <div class="panel-head">
-        <canvas class="preview" data-i="cpu"></canvas>
-        <div class="who"><h2 style="color:${COLORS[1]}">CPU</h2>
-        <div class="acct">Picks a random skin, spike and power every match.</div></div>
-      </div>
-      <div class="pick"><span>Difficulty</span><div class="chips">${Object.entries(DIFFICULTIES).map(([id, d]) =>
-        `<button class="chip ${difficulty === id ? 'on' : ''}" data-id="${id}">${d.name}</button>`).join('')}</div>
-      <p class="desc">${DIFFICULTIES[difficulty].desc} A win pays ${coinHtml(DIFFICULTIES[difficulty].coins)}${isEvent ? ' +50%' : ''}.</p></div>`;
-  };
-  draw();
-  el.addEventListener('click', e => {
-    const chip = e.target.closest('.chip');
-    if (!chip) return;
-    difficulty = chip.dataset.id; store.set('bd.difficulty', difficulty); draw();
-  });
-  return el;
-}
+$('setupBody').addEventListener('click', e => {
+  const t = e.target.closest('[data-kind], [data-set]');
+  if (!t) return;
+  if (t.dataset.set === 'rename') { renaming = true; return renderSetup(); }
+  if (online?.ready) return toast("You're locked in!");
+  const kind = t.dataset.kind;
+  if (kind === 'difficulty') { difficulty = t.dataset.id; store.set('bd.difficulty', difficulty); }
+  else { myLoadout()[kind] = t.dataset.id; store.set('bd.loadouts', loadouts); }
+  sfx(600, 0.03, 'square', 0.02);
+  renderSetup();
+  if (online) sendChoice();
+});
+$('setupBody').addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id !== 'renameForm') return;
+  const v = $('renameInput').value.trim().slice(0, 16);
+  if (v && isRude(v)) return toast('Please pick a different name.');
+  matchName = v; renaming = false;
+  renderSetup();
+  if (online) sendChoice();
+});
 
 // ============================================================================
 // Match
@@ -1263,10 +1409,8 @@ function randomLoadout() {
 function startMatch() {
   mods = { ...BASE_MODS, ...(isEvent ? weekInfo().event.mods : {}) };
   resize();
-  const n = i => { const v = $('name' + i) ? $('name' + i).value.trim() : ''; return v && !isRude(v) ? v : defaultName(i); };
-  players = mode === '1p'
-    ? [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)]
-    : [makePlayer(0, n(0), loadouts[0], false), makePlayer(1, n(1), loadouts[1], false)];
+  mode = '1p';
+  players = [makePlayer(0, myMatchName(), myLoadout(), false), makePlayer(1, `CPU (${DIFFICULTIES[difficulty].name})`, randomLoadout(), true)];
   particles = []; popups = [];
   elapsed = 0; placing = 0; aimPress = false;
   state = 'place';
@@ -1275,16 +1419,32 @@ function startMatch() {
   $('quitBtn').classList.remove('hidden');
   updateHint();
 }
-$('startBtn').onclick = () => { sfx(520, 0.1, 'square', 0.04, 1.5); startMatch(); };
-$('againBtn').onclick = startMatch;
+$('startBtn').onclick = () => {
+  sfx(520, 0.1, 'square', 0.04, 1.5);
+  if (online) setReady(); else startMatch();
+};
+$('againBtn').onclick = () => (mode === 'online' ? startMatchmaking() : startMatch());
 $('overMenu').onclick = () => show('app');
-$('quitBtn').onclick = () => { mods = { ...BASE_MODS }; resize(); show('app'); };
+$('quitBtn').onclick = () => {
+  if (online) return leaveOnline('You left the match.');
+  mods = { ...BASE_MODS }; resize(); show('app');
+};
+// The cube controlled on this device
+const myIdx = () => (online ? online.myIdx : 0);
+const myPlayer = () => players[myIdx()];
+function pressPower() {
+  if (online && online.role === 'guest') sendPower(); else usePower(myPlayer());
+}
 
 function updateHint() {
   if ((state === 'place' || state === 'aim') && players[placing]) {
     const p = players[placing];
-    hint.innerHTML = `<b style="color:${p.color}">${escapeHtml(p.name)}</b>: ` +
-      (state === 'place' ? 'tap inside the room to place your cube' : 'drag or tap to choose the bounce direction');
+    const left = online ? ` <span class="fine">(${Math.max(0, Math.ceil(PLACE_SECONDS - (Date.now() - online.phaseAt) / 1000))}s)</span>` : '';
+    hint.innerHTML = `<b style="color:${p.color}">${escapeHtml(online ? 'You' : p.name)}</b>: ` +
+      (state === 'place' ? 'tap inside the room to place your cube' : 'drag or tap to choose the bounce direction') + left;
+    hint.classList.remove('hidden');
+  } else if (state === 'wait' && online) {
+    hint.innerHTML = `Waiting for <b>${escapeHtml(online.oppName)}</b> to place their cube…`;
     hint.classList.remove('hidden');
   } else {
     hint.classList.add('hidden');
@@ -1317,6 +1477,7 @@ function placeCpu(p) {
 }
 
 function finishPlacing() {
+  if (online) return onlinePlaced(players[placing]);
   if (placing === 0) {
     if (players[1].isCpu) { placeCpu(players[1]); startCountdown(); }
     else { placing = 1; state = 'place'; }
@@ -1328,9 +1489,8 @@ canvas.addEventListener('pointermove', e => { mouse.x = e.clientX; mouse.y = e.c
 canvas.addEventListener('pointerdown', e => {
   mouse.x = e.clientX; mouse.y = e.clientY;
   if (state === 'play') {
-    buttons.forEach((b, i) => {
-      if (players[i] && !players[i].isCpu && Math.hypot(e.clientX - b.x, e.clientY - b.y) < b.r + 10) usePower(players[i]);
-    });
+    const b = buttons[0];
+    if (Math.hypot(e.clientX - b.x, e.clientY - b.y) < b.r + 10) pressPower();
     return;
   }
   const p = players[placing];
@@ -1362,8 +1522,7 @@ canvas.addEventListener('pointerup', e => {
 document.addEventListener('keydown', e => {
   if (state !== 'play' || e.target.tagName === 'INPUT') return;
   const k = e.key.toLowerCase();
-  if (k === 'a' || (mode === '1p' && k === ' ')) { usePower(players[0]); e.preventDefault(); }
-  if (k === 'l' && mode === '2p') usePower(players[1]);
+  if (k === 'a' || k === ' ') { pressPower(); e.preventDefault(); }
 });
 
 // ---------- Spikes ----------
@@ -1426,7 +1585,7 @@ function usePower(p) {
     burst(p.x, p.y, def.color, 14);
   }
   popups.push({ x: p.x, y: p.y - sizeOf(p), text: def.name.toUpperCase() + '!', color: def.color, life: 0.9 });
-  if (!p.isCpu) buzz('medium');
+  if (p === myPlayer()) buzz('medium');
   sfx(300, 0.25, 'sawtooth', 0.04, 3);
 }
 
@@ -1485,6 +1644,7 @@ function update(dt) {
     return;
   }
   if (state !== 'play') return;
+  if (online && online.role === 'guest') return;
   if (elapsed < OVERTIME_AT && elapsed + dt >= OVERTIME_AT) {
     popups.push({ x: W / 2, y: AY + AS / 2, text: 'OVERTIME! Spikes are growing', color: '#ffcf3f', life: 2, big: true });
     sfx(220, 0.4, 'sawtooth', 0.05, 2); buzz('heavy');
@@ -1543,7 +1703,7 @@ function update(dt) {
     if (tgt.shield > 0) { burst(hit.x, hit.y, '#29f0ff', 3); continue; }
     tgt.hp = Math.max(0, tgt.hp - 1);
     atk.dealt++;
-    if (!tgt.isCpu) buzz('light');
+    if (tgt === myPlayer()) buzz('light');
     tgt.flash = 0.15;
     shake = Math.min(8, shake + 1.5);
     burst(hit.x, hit.y, atk.color, 4);
@@ -1555,10 +1715,391 @@ function update(dt) {
 }
 
 // ============================================================================
+// Online matches: matchmaking, choosing fighters, placing cubes, live play
+// ============================================================================
+// One phone (the "host") runs the match and sends its state 15 times a second; the other
+// phone (the "guest") shows it smoothly and sends its power button presses back.
+const MATCH_VERSION = 1;
+const SEARCH_SECONDS = window.BD_SEARCH_SECONDS || 30;
+const SELECT_SECONDS = window.BD_SELECT_SECONDS || 20;
+const PLACE_SECONDS = 10;
+const SEND_EVERY = 1 / 15;
+const GUEST_DELAY = 0.12;     // the guest shows the match this far behind, to smooth out the network
+let mmSession = null;         // matchmaking search in progress
+let online = null;            // online match in progress
+
+function mmShow(title, text, { spin = true, button = 'Cancel', onButton } = {}) {
+  screens.forEach(x => $(x).classList.toggle('hidden', x !== 'mm'));
+  $('mmTitle').textContent = title;
+  $('mmText').textContent = text;
+  $('mmSpin').classList.toggle('hidden', !spin);
+  if (!spin) $('mmTimer').textContent = '';
+  $('mmCancel').textContent = button;
+  $('mmCancel').onclick = onButton || (() => show('app'));
+}
+
+async function startMatchmaking() {
+  if (mmSession || online) return;
+  const myId = auth1.uid;
+  const sess = mmSession = { cancelled: false, found: false, stops: [], offset: 0 };
+  state = 'menu'; players = [];
+  mmShow('Matchmaking…', 'Looking for another player', { onButton: () => cancelMatchmaking(null) });
+  const ends = Date.now() + SEARCH_SECONDS * 1000;
+  const tick = () => { if (mmSession === sess) $('mmTimer').textContent = Math.max(0, Math.ceil((ends - Date.now()) / 1000)) + 's'; };
+  tick(); sess.timer = setInterval(tick, 250);
+  try {
+    await rtdb('DELETE', `queue/${myId}`);
+    await rtdb('PUT', `queue/${myId}`, { t: SERVER_TIME, name: me.name, v: MATCH_VERSION });
+    const mine = await rtdb('GET', `queue/${myId}`);
+    sess.offset = (mine?.t || Date.now()) - Date.now();
+    if (sess.cancelled) return;
+    // Another player may pair with us: watch our spot in the queue
+    sess.stops.push(rtdbStream(`queue/${myId}/match`, m => {
+      if (m && m.id && m.by !== myId && !sess.found && !sess.cancelled) { sess.found = true; foundMatch(sess, m.id, 'guest'); }
+    }));
+    while (!sess.cancelled && !sess.found && Date.now() < ends) {
+      await tryPair(sess, myId);
+      if (sess.found || sess.cancelled) return;
+      await sleep(800 + Math.random() * 700);
+    }
+    if (sess.found || sess.cancelled) return;
+    // Time's up. Last check that nobody paired with us at the final second
+    const last = await rtdb('GET', `queue/${myId}/match`).catch(() => null);
+    if (last?.id && last.by !== myId && !sess.found) { sess.found = true; return foundMatch(sess, last.id, 'guest'); }
+    cancelMatchmaking('No other players are searching right now. Try again in a bit!');
+  } catch (e) {
+    cancelMatchmaking(e.message === 'DENIED' ? 'Online matches are not set up on the server yet.' : e.message);
+  }
+}
+
+async function tryPair(sess, myId) {
+  const q = await rtdb('GET', 'queue') || {};
+  const now = Date.now() + sess.offset;
+  // Only start a match with players whose id sorts after ours, so two players never grab each other at once.
+  // With three or more searching, the partner is picked at random.
+  const free = Object.entries(q).filter(([uid, e]) => uid > myId && e && !e.match && e.v === MATCH_VERSION && now - e.t < (SEARCH_SECONDS + 5) * 1000);
+  if (!free.length || sess.cancelled || sess.found) return;
+  const [other] = free[Math.floor(Math.random() * free.length)];
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  // Lock ourselves first; if this fails, someone just paired with us and the watcher takes over
+  try { await rtdb('PUT', `queue/${myId}/match`, { id, by: myId }); } catch { return; }
+  if (sess.cancelled) { await rtdb('DELETE', `queue/${myId}/match`).catch(() => {}); return; }
+  try {
+    await rtdb('PUT', `matches/${id}`, { players: { a: myId, b: other }, v: MATCH_VERSION, phase: 'select', created: SERVER_TIME });
+    await rtdb('PUT', `queue/${other}/match`, { id, by: myId });
+  } catch {
+    // They were paired with someone else a moment ago: undo and keep looking
+    await rtdb('DELETE', `matches/${id}`).catch(() => {});
+    await rtdb('DELETE', `queue/${myId}/match`).catch(() => {});
+    return;
+  }
+  sess.found = true;
+  foundMatch(sess, id, 'host');
+}
+
+function stopSearch(sess) {
+  sess.cancelled = true;
+  clearInterval(sess.timer);
+  sess.stops.forEach(f => f());
+  if (mmSession === sess) mmSession = null;
+  rtdb('DELETE', `queue/${auth1.uid}`).catch(() => {});
+}
+function cancelMatchmaking(msg) {
+  const sess = mmSession;
+  if (!sess) return;
+  stopSearch(sess);
+  if (!msg) { toast('Matchmaking cancelled'); return show('app'); }
+  mmShow('No match found', msg, { spin: false, button: 'Back to menu' });
+}
+function foundMatch(sess, id, role) {
+  stopSearch(sess);
+  mmShow('Player found!', 'Getting ready…', { spin: true, button: 'Leave', onButton: () => leaveOnline('You left the match.') });
+  joinMatch(id, role);
+}
+
+function joinMatch(id, role) {
+  online = {
+    id, role, myIdx: role === 'host' ? 0 : 1, myId: auth1.uid, oppId: null, oppName: 'your opponent',
+    mirror: null, phase: 'select', joinedAt: Date.now(), phaseAt: Date.now(), ready: false, placed: false,
+    presses: 0, seenPresses: 0, snaps: [], renderT: 0, lastSend: 0, sending: false, timers: [],
+  };
+  mode = 'online'; isEvent = false; matchName = ''; renaming = false;
+  mods = { ...BASE_MODS }; resize();
+  const o = online;
+  o.stop = rtdbStream(`matches/${id}`, m => { if (online === o) onMatchData(m); },
+    () => { if (online === o && o.phase !== 'over') leaveOnline('Lost the connection to the match.', true); });
+  sendChoice();
+  o.timers.push(setInterval(() => rtdb('PATCH', `matches/${id}/p/${o.myId}`, { hb: SERVER_TIME }).catch(() => {}), 2000));
+  o.timers.push(setInterval(checkOnline, 500));
+  show('setup'); renderSetup();
+}
+
+function sendChoice() {
+  if (!online) return;
+  const lo = myLoadout();
+  rtdb('PATCH', `matches/${online.id}/p/${online.myId}`, {
+    name: myMatchName(), skin: lo.skin, spike: lo.spike, power: lo.power, ready: online.ready, hb: SERVER_TIME,
+  }).catch(() => {});
+}
+function setReady() {
+  if (!online || online.ready) return;
+  online.ready = true;
+  renaming = false;
+  sendChoice();
+  renderSetup();
+}
+function onlineVsCard() {
+  const opp = online.mirror?.p?.[online.oppId];
+  const left = Math.max(0, Math.ceil(SELECT_SECONDS - (Date.now() - online.joinedAt) / 1000));
+  const status = opp?.ready ? '<span class="ok">Ready ✓</span>' : opp ? 'Choosing…' : 'Joining…';
+  return `<div class="vs-card"><div class="who"><span class="fine">You're playing against</span><b>${escapeHtml(online.oppName)}</b>
+    <span class="fine">${status}</span></div><div class="clock">${left}</div></div>`;
+}
+
+// A choice from the other phone: only accept known skins, spikes and powers
+function safeLoadout(p) {
+  return {
+    skin: SKINS.some(x => x.id === p?.skin) ? p.skin : 'classic',
+    spike: SPIKES[p?.spike] ? p.spike : 'classic',
+    power: POWERS[p?.power] ? p.power : 'dash',
+  };
+}
+const safeName = n => (typeof n === 'string' && n.trim() && !isRude(n) ? n.trim().slice(0, 16) : 'Player');
+
+function onMatchData(m) {
+  const o = online;
+  o.mirror = m;
+  if (!m) { if (o.phase !== 'over') leaveOnline('The match was closed.', true); return; }
+  o.oppId = o.role === 'host' ? m.players?.b : m.players?.a;
+  const opp = m.p?.[o.oppId];
+  if (opp?.name) o.oppName = safeName(opp.name);
+  if (m.phase === 'cancelled') {
+    if (o.phase !== 'over') leaveOnline(m.leftBy === o.myId ? 'You left the match.' : `${o.oppName} left the match.`, true);
+    return;
+  }
+  if (m.phase !== o.phase) { o.phase = m.phase; o.phaseAt = Date.now(); onPhase(m); }
+  if (!online) return;
+  if (o.role === 'host') hostCheck(m);
+  if (o.role === 'guest' && m.state && (m.phase === 'go' || m.phase === 'over')) guestSnapshot(m.state);
+  if (m.phase === 'over' && m.result) onlineResult(m.result);
+  if (o.phase === 'select' && !$('setup').classList.contains('hidden')) $('setupTop').innerHTML = onlineVsCard();
+}
+
+function onPhase(m) {
+  const o = online;
+  if (m.phase === 'place') {
+    const ids = [m.players.a, m.players.b];
+    players = ids.map((id, i) => makePlayer(i, safeName(m.p?.[id]?.name), safeLoadout(m.p?.[id]), false));
+    particles = []; popups = []; elapsed = 0; aimPress = false; shake = 0;
+    placing = o.myIdx; state = 'place';
+    screens.forEach(x => $(x).classList.add('hidden'));
+    $('quitBtn').classList.remove('hidden');
+    native({ type: 'awake', on: true });
+    sfx(440, 0.12);
+    updateHint();
+  }
+  if (m.phase === 'go' && m.start) {
+    ['a', 'b'].forEach((k, i) => {
+      const q = m.start[k], p = players[i];
+      p.x = AX + q.x * AS; p.y = AY + q.y * AS; p.placed = true;
+      launch(p, q.dx, q.dy);
+    });
+    o.snaps = []; o.renderT = 0;
+    startCountdown();
+    updateHint();
+  }
+}
+
+// Things only the host decides: when to move on, where the cubes start, the guest's power presses
+function hostCheck(m) {
+  const o = online, mine = m.p?.[o.myId], theirs = m.p?.[o.oppId];
+  if (m.phase === 'select' && mine?.ready && theirs?.ready && !o.sentPlace) {
+    o.sentPlace = true;
+    rtdb('PATCH', `matches/${o.id}`, { phase: 'place' }).catch(() => {});
+  }
+  if (m.phase === 'place' && mine?.place && theirs?.place && !o.sentStart) { o.sentStart = true; hostStart(mine.place, theirs.place); }
+  if (m.phase === 'go' && state === 'play' && theirs) {
+    const n = Number(theirs.presses) || 0;
+    while (o.seenPresses < n) { o.seenPresses++; usePower(players[1]); }
+  }
+}
+function hostStart(pa, pb) {
+  const s = 64 / 600, lo = s / 2 + 0.005, hi = 1 - s / 2 - 0.005;   // cube size in room units
+  const fix = q => {
+    const dx = Number(q?.dx) || 1, dy = Number(q?.dy) || 1;
+    return { x: Math.min(hi, Math.max(lo, Number(q?.x) || 0.5)), y: Math.min(hi, Math.max(lo, Number(q?.y) || 0.5)), dx, dy };
+  };
+  const A = fix(pa), B = fix(pb);
+  // Both picked almost the same spot: slide the guest's cube away
+  if (Math.abs(A.x - B.x) < s * 1.3 && Math.abs(A.y - B.y) < s * 1.3) B.x = A.x < 0.5 ? Math.min(hi, A.x + 0.35) : Math.max(lo, A.x - 0.35);
+  rtdb('PATCH', `matches/${online.id}`, { phase: 'go', start: { a: A, b: B } }).catch(() => {});
+}
+
+function checkOnline() {
+  const o = online;
+  if (!o) return;
+  const now = Date.now(), m = o.mirror;
+  if (o.phase === 'select') {
+    if (!$('setup').classList.contains('hidden')) $('setupTop').innerHTML = onlineVsCard();
+    // Time's up: go with whatever you picked
+    if (!o.ready && now - o.joinedAt > SELECT_SECONDS * 1000) setReady();
+  }
+  if (o.phase === 'place') {
+    if (!o.placed && now - o.phaseAt > PLACE_SECONDS * 1000) autoPlace();
+    updateHint();
+  }
+  // Heartbeats are server times, so compare theirs with ours
+  const mine = m?.p?.[o.myId]?.hb, theirs = m?.p?.[o.oppId]?.hb;
+  if (!theirs && now - o.joinedAt > 15000) return leaveOnline(`${o.oppName === 'your opponent' ? 'The other player' : o.oppName} didn't join.`);
+  if (mine && theirs && mine - theirs > 10000 && o.phase !== 'over') return leaveOnline(`${o.oppName} lost connection.`);
+}
+
+function onlinePlaced(p) {
+  const o = online;
+  if (!o || o.placed) return;
+  o.placed = true;
+  const l = Math.hypot(p.vx, p.vy) || 1;
+  rtdb('PATCH', `matches/${o.id}/p/${o.myId}`, {
+    place: { x: (p.x - AX) / AS, y: (p.y - AY) / AS, dx: p.vx / l, dy: p.vy / l },
+  }).catch(() => {});
+  state = 'wait';
+  updateHint();
+}
+function autoPlace() {
+  const p = myPlayer();
+  if (!p.placed) {
+    const pos = clampPos(AX + (0.2 + Math.random() * 0.6) * AS, AY + (0.2 + Math.random() * 0.6) * AS);
+    p.x = pos.x; p.y = pos.y; p.placed = true;
+  }
+  const a = (Math.floor(Math.random() * 4) + 0.25 + Math.random() * 0.5) * Math.PI / 2;
+  launch(p, Math.cos(a), Math.sin(a));
+  onlinePlaced(p);
+}
+
+// ---------- Host: send the match ----------
+const r4 = v => Math.round(v * 1e4) / 1e4;
+function packState() {
+  return {
+    t: r4(elapsed),
+    p: players.map(q => [r4((q.x - AX) / AS), r4((q.y - AY) / AS), r4(q.vx / AS), r4(q.vy / AS), r4(q.angle),
+      q.hp, r4(q.powerCd), r4(q.dash), r4(q.shield), r4(q.frozen), r4(q.rage), q.dealt, q.powersUsed]),
+  };
+}
+function hostSend() {
+  const o = online;
+  if (o.sending || clock - o.lastSend < SEND_EVERY) return;
+  o.lastSend = clock; o.sending = true;
+  rtdb('PATCH', `matches/${o.id}`, { state: packState() }).catch(() => {}).finally(() => { o.sending = false; });
+}
+function hostFinish(winner) {
+  const o = online;
+  const result = {
+    winner: winner ? (winner.i === 0 ? o.myId : o.oppId) : 'draw', hp: winner ? winner.hp : 0,
+    dealt: players.map(q => q.dealt), powers: players.map(q => q.powersUsed),
+  };
+  rtdb('PATCH', `matches/${o.id}`, { state: packState(), result, phase: 'over' }).catch(() => {});
+  onlineResult(result);
+  // Tidy up the match once both phones have had time to read the result
+  const id = o.id;
+  setTimeout(() => rtdb('DELETE', `matches/${id}`).catch(() => {}), 30000);
+}
+
+// ---------- Guest: show the match ----------
+function guestSnapshot(st) {
+  const o = online, snaps = o.snaps;
+  if (!st?.p || (snaps.length && st.t <= snaps[snaps.length - 1].t)) return;
+  const prev = snaps[snaps.length - 1];
+  snaps.push({ t: st.t, p: st.p });
+  if (snaps.length > 40) snaps.splice(0, snaps.length - 40);
+  if (!prev) return;
+  // Effects the host saw: hits and powers
+  players.forEach((q, i) => {
+    const was = prev.p[i], now = st.p[i];
+    if (now[5] < was[5]) {
+      q.flash = 0.15; shake = Math.min(8, shake + 1.5);
+      burst(q.x, q.y, players[1 - i].color, 4);
+      if (q === myPlayer()) buzz('light');
+      if (clock - lastHitSound > 0.06) { lastHitSound = clock; sfx(120 + Math.random() * 60, 0.06, 'square', 0.035); }
+    }
+    if (now[12] > was[12]) {
+      const def = POWERS[q.power];
+      popups.push({ x: q.x, y: q.y - sizeOf(q), text: def.name.toUpperCase() + '!', color: def.color, life: 0.9 });
+      sfx(300, 0.25, 'sawtooth', 0.04, 3);
+      if (q === myPlayer()) buzz('medium');
+    }
+  });
+}
+function guestTick(dt) {
+  const o = online, snaps = o.snaps;
+  for (const q of players) q.flash = Math.max(0, q.flash - dt);
+  if (!snaps.length) return;
+  // Play the match a little behind the newest state, catching up gently if we drift
+  const target = snaps[snaps.length - 1].t - GUEST_DELAY;
+  if (!o.renderT || Math.abs(o.renderT - target) > 0.5) o.renderT = target;
+  else o.renderT += dt * (1 + Math.max(-0.5, Math.min(0.5, (target - o.renderT) * 2)));
+  const t = o.renderT;
+  let i = snaps.findIndex(x => x.t > t);
+  if (i === -1) i = snaps.length - 1;
+  const s1 = snaps[i], s0 = snaps[Math.max(0, i - 1)];
+  const k = s1.t > s0.t ? Math.min(1, Math.max(0, (t - s0.t) / (s1.t - s0.t))) : 1;
+  elapsed = Math.max(0, t);
+  players.forEach((q, j) => {
+    const a = s0.p[j], b = s1.p[j];
+    q.x = AX + (a[0] + (b[0] - a[0]) * k) * AS;
+    q.y = AY + (a[1] + (b[1] - a[1]) * k) * AS;
+    q.vx = b[2] * AS; q.vy = b[3] * AS;
+    q.angle = a[4] + (b[4] - a[4]) * k;
+    [q.hp, q.powerCd, q.dash, q.shield, q.frozen, q.rage, q.dealt, q.powersUsed] = b.slice(5);
+  });
+}
+function sendPower() {
+  const o = online, p = myPlayer();
+  if (state !== 'play' || p.powerCd > 0 || p.frozen > 0) return;
+  o.presses++;
+  rtdb('PATCH', `matches/${o.id}/p/${o.myId}`, { presses: o.presses }).catch(() => {});
+}
+
+function onlineResult(result) {
+  const o = online;
+  if (!o || o.resultShown) return;
+  o.resultShown = true;
+  state = 'over';
+  // Use the host's final numbers on both phones
+  const winner = result.winner === 'draw' ? null : players[result.winner === (o.role === 'host' ? o.myId : o.oppId) ? 0 : 1];
+  players.forEach((q, i) => {
+    q.dealt = Number(result.dealt?.[i]) || q.dealt;
+    q.powersUsed = Number(result.powers?.[i]) || q.powersUsed;
+    q.hp = q === winner ? Math.max(1, Number(result.hp) || 1) : 0;
+  });
+  if (!winner) players.forEach(q => { q.hp = 0; });
+  closeOnline();
+  showResult(winner, players[o.myIdx], o.oppName);
+}
+function closeOnline() {
+  const o = online;
+  if (!o) return;
+  online = null;
+  o.stop?.();
+  o.timers.forEach(clearInterval);
+}
+function leaveOnline(msg, fromServer = false) {
+  const o = online;
+  if (!o) return;
+  closeOnline();
+  if (!fromServer) rtdb('PATCH', `matches/${o.id}`, { phase: 'cancelled', leftBy: o.myId }).catch(() => {});
+  mods = { ...BASE_MODS }; resize();
+  state = 'menu'; players = [];
+  native({ type: 'awake', on: false });
+  $('quitBtn').classList.add('hidden');
+  updateHint();
+  mode = '1p';
+  mmShow('Match ended', `${msg} No points were won or lost.`, { spin: false, button: 'Back to menu' });
+}
+
+// ============================================================================
 // End of match: coins, score, challenges
 // ============================================================================
-function matchCoins(p, winner) {
-  const won = p === winner;
+function matchCoins(won, winner) {
   let c;
   if (mode === '1p') c = won ? DIFFICULTIES[difficulty].coins : 3;
   else c = !winner ? 5 : won ? 15 : 5;
@@ -1566,12 +2107,11 @@ function matchCoins(p, winner) {
   if (weekInfo().event.coinRush) c *= 2;
   return Math.round(c);
 }
-function matchStats(p, winner) {
-  const won = p === winner;
+function matchStats(p, won) {
   const s = { play: 1, damage: p.dealt, power: p.powersUsed };
   if (isEvent) s.eventplay = 1;
   if (won) {
-    s['win' + mode] = 1;
+    s[mode === '1p' ? 'win1p' : 'win2p'] = 1;
     s['win_' + p.spike] = 1;
     if (p.hp >= 50) s.bigwin = 1;
     if (mode === '1p' && difficulty === 'hard') s.winHard = 1;
@@ -1579,59 +2119,63 @@ function matchStats(p, winner) {
   return s;
 }
 
-async function endMatch(dead) {
+function endMatch(dead) {
   state = 'over';
-  $('quitBtn').classList.add('hidden');
   const winner = dead.length === 2 ? null : players.find(p => p.hp > 0);
+  if (online) return hostFinish(winner);
+  showResult(winner, players[0]);
+}
+
+// The result screen. Saves coins, wins/losses, score and challenge progress for the player on this phone.
+async function showResult(winner, mine, oppName) {
+  const won = winner === mine;
+  $('quitBtn').classList.add('hidden');
   const text = $('winText');
-  text.textContent = winner ? `${winner.name} wins!` : 'Draw!';
+  text.textContent = !winner ? 'Draw!' : won ? 'You win!' : `${winner.name} wins!`;
   text.style.color = winner ? winner.color : '#fff';
   [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.15, 'square', 0.04), i * 110));
   native({ type: 'awake', on: false });
-  buzz(winner && winner.isCpu ? 'error' : 'success');
+  buzz(won || !winner ? 'success' : 'error');
+  $('againBtn').textContent = mode === 'online' ? 'Play again' : 'Rematch';
   const results = $('results');
-  const humans = players.filter(p => !p.isCpu);
-  const sessions = humans.map(p => (p.i === 0 ? auth1 : auth2));
-  results.innerHTML = sessions.some(Boolean) ? '<div class="fine">Saving…</div>' : '';
+  results.innerHTML = me ? '<div class="fine">Saving…</div>' : '';
   $('againBtn').disabled = true;
-  setTimeout(() => { if (state === 'over') $('over').classList.remove('hidden'); }, 700);
+  setTimeout(() => { if (state === 'over') { screens.forEach(x => $(x).classList.toggle('hidden', x !== 'over')); } }, 700);
 
   const lines = [];
-  if (mode === '2p' && winner) lines.push(`<div class="fine">${escapeHtml(winner.name)} won with ${winner.hp} HP left</div>`);
-  const challenges = dailyChallenges();
-  for (const [k, p] of humans.entries()) {
-    const sess = sessions[k], coins = matchCoins(p, winner), name = `<b style="color:${p.color}">${escapeHtml(p.name)}</b>`;
-    if (!sess) {
-      lines.push(`<div class="line">${name}: ${coinHtml(coins)} coins not saved. Log in to keep coins${mode === '2p' ? ' and score' : ''}.</div>`);
-      continue;
-    }
+  if (mode === 'online' && winner) lines.push(`<div class="fine">${won ? `You beat ${escapeHtml(oppName || 'your opponent')}` : `${escapeHtml(winner.name)} won`} with ${winner.hp} HP left</div>`);
+  const coins = matchCoins(won, winner);
+  if (!me) {
+    lines.push(`<div class="line">${coinHtml(coins)} coins not saved. Log in to keep your coins.</div>`);
+  } else {
     try {
-      let scoreLine = '', done = [];
-      const before = {};
-      await mutateUser(sess, d => {
+      const challenges = dailyChallenges();
+      let scoreLine = '', done = [], wl = '';
+      await mutateUser(auth1, d => {
         rollDaily(d);
-        const won = p === winner;
         d.coins += coins;
         if (mode === '1p') { if (won) d.wins1p++; else if (winner) d.losses1p++; }
         else if (winner) {
-          // Winner gains their remaining HP; loser loses the same amount
+          // Winner gains the HP they have left; the loser loses the same amount
           const old = d.score;
           d.score = Math.max(0, old + (won ? winner.hp : -winner.hp));
           if (won) d.wins2p++; else d.losses2p++;
           const diff = d.score - old;
-          scoreLine = ` · Score ${old} → <b>${d.score}</b> <span class="${diff >= 0 ? 'up' : 'down'}">(${diff >= 0 ? '+' : ''}${diff})</span>`;
+          scoreLine = `<div class="line">Score ${old} → <b>${d.score}</b> <span class="${diff >= 0 ? 'up' : 'down'}">(${diff >= 0 ? '+' : ''}${diff})</span></div>`;
+          wl = `<div class="line">Two-player record: <b>${d.wins2p}</b> wins · <b>${d.losses2p}</b> losses</div>`;
         }
-        const stats = matchStats(p, winner);
+        const before = {};
         for (const c of challenges) before[c.id] = (d.daily.progress[c.metric] || 0) >= c.target;
-        for (const [key, v] of Object.entries(stats)) {
+        for (const [key, v] of Object.entries(matchStats(mine, won))) {
           if (challenges.some(c => c.metric === key)) d.daily.progress[key] = (d.daily.progress[key] || 0) + v;
         }
         done = challenges.filter(c => !before[c.id] && (d.daily.progress[c.metric] || 0) >= c.target);
       });
-      lines.push(`<div class="line">${name}: <span class="up">+${coins}</span> ${coinHtml('')}${scoreLine}</div>`);
-      done.forEach(c => lines.push(`<div class="line">${name}: challenge done! “${escapeHtml(c.text)}”. Claim ${coinHtml(c.reward)} in Events.</div>`));
+      lines.push(`<div class="line"><span class="up">+${coins}</span> ${coinHtml('')} coins</div>`);
+      if (scoreLine) lines.push(scoreLine, wl);
+      done.forEach(c => lines.push(`<div class="line">Challenge done! “${escapeHtml(c.text)}”. Claim ${coinHtml(c.reward)} in Events.</div>`));
     } catch (e) {
-      lines.push(`<div class="line down">${name}: couldn't save this match. ${escapeHtml(e.message)}</div>`);
+      lines.push(`<div class="line down">Couldn't save this match. ${escapeHtml(e.message)}</div>`);
     }
   }
   if (isEvent) lines.push(`<div class="fine">Event match bonus: +50% coins</div>`);
@@ -1814,11 +2358,11 @@ function drawHud() {
 
 const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 function drawPowerButtons() {
-  players.forEach((p, i) => {
-    const b = buttons[i], def = POWERS[p.power];
+  [myIdx(), 1 - myIdx()].forEach((pi, i) => {
+    const p = players[pi], b = buttons[i], def = POWERS[p.power];
     const ready = p.powerCd <= 0 && p.frozen <= 0;
     ctx.save();
-    ctx.globalAlpha = p.isCpu ? 0.55 : 1;
+    ctx.globalAlpha = i === 0 ? 1 : 0.55;
     ctx.fillStyle = '#121216';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
     // Recharge ring
@@ -1836,7 +2380,7 @@ function drawPowerButtons() {
       ctx.fillText(Math.ceil(Math.max(p.powerCd / mods.powerRate, p.frozen)) + 's', b.x, b.y + b.r * 0.28);
     }
     ctx.fillStyle = p.color; ctx.font = 'bold 11px system-ui, sans-serif';
-    const label = p.isCpu ? 'CPU' : coarse ? '' : (i === 0 ? (mode === '1p' ? 'A / Space' : 'Key A') : 'Key L');
+    const label = i === 1 ? (online ? 'Opponent' : 'CPU') : coarse ? '' : 'A / Space';
     if (label) ctx.fillText(label, b.x, b.y - b.r - 10);
     ctx.restore();
   });
@@ -1859,21 +2403,16 @@ function drawAimArrow(p) {
 
 // Animated previews on the setup screen and in the shop
 function drawPreviews() {
-  document.querySelectorAll('#setup canvas.preview').forEach(cv => {
-    const size = 120;
+  document.querySelectorAll('#bigPreview').forEach(cv => {
+    const size = 150;
     if (cv.width !== size * DPR) { cv.width = size * DPR; cv.height = size * DPR; }
     const c = cv.getContext('2d');
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.fillStyle = '#000'; c.fillRect(0, 0, size, size);
-    if (cv.dataset.i === 'cpu') {
-      c.fillStyle = '#555'; c.font = 'bold 44px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-      c.fillText('?', 60, 60);
-      return;
-    }
-    const i = +cv.dataset.i, lo = loadouts[i];
-    const fake = { x: 60, y: 60, unit: 0.34, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
+    const i = myIdx(), lo = myLoadout();
+    const fake = { x: 75, y: 75, unit: 0.42, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
     drawSpikes(c, fake);
-    drawSkin(c, 60, 60, sizeOf(fake), lo.skin, clock);
+    drawSkin(c, 75, 75, sizeOf(fake), lo.skin, clock);
   });
 }
 function drawShop() {
@@ -1950,6 +2489,7 @@ function loop(now) {
   last = now;
   // Sub-step so fast cubes and spikes don't skip through each other
   for (let i = 0; i < 4; i++) update(dt / 4);
+  if (online && state === 'play') { if (online.role === 'guest') guestTick(dt); else hostSend(); }
   updateEffects(dt);
   draw();
   requestAnimationFrame(loop);

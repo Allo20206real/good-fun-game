@@ -1,0 +1,28 @@
+{
+  "rules": {
+    "queue": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid && (!newData.exists() || !data.child('match').exists() || data.child('match/by').val() === auth.uid)",
+        ".validate": "newData.hasChildren(['t', 'v'])",
+        "t": { ".validate": "newData.isNumber() && (newData.val() === now || newData.val() === data.val())" },
+        "v": { ".validate": "newData.isNumber()" },
+        "name": { ".validate": "newData.isString() && newData.val().length <= 16" },
+        "match": {
+          ".write": "auth != null && ((!data.exists() && newData.child('by').val() === auth.uid) || (!newData.exists() && data.child('by').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['id', 'by'])",
+          "id": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "by": { ".validate": "newData.val() === auth.uid" },
+          "$other": { ".validate": false }
+        },
+        "$other": { ".validate": false }
+      }
+    },
+    "matches": {
+      "$id": {
+        ".read": "auth != null && (data.child('players/a').val() === auth.uid || data.child('players/b').val() === auth.uid)",
+        ".write": "auth != null && (data.exists() ? (data.child('players/a').val() === auth.uid || data.child('players/b').val() === auth.uid) : newData.child('players/a').val() === auth.uid)"
+      }
+    }
+  }
+}
