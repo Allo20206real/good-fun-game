@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Bounce Duel</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Bounce Duel">
 <style>
   :root {
     --bg: #000; --panel: #0e0e12; --panel-2: #16161c; --line: #2a2a33; --text: #fff; --muted: #a3a3b0;
@@ -622,6 +630,28 @@ window.bdBack = () => {
   native({ type: 'exit' });
 };
 
+// ---------- Install as an app (website only) ----------
+// On the website the game can be added to the home screen and then runs full-screen like an app
+const IS_WEBSITE = /^https?:$/.test(location.protocol) && !window.ReactNativeWebView && !window.claude;
+const isInstalled = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (tab === 'play') renderApp(); });
+window.addEventListener('appinstalled', () => { installPrompt = null; renderApp(); });
+if (IS_WEBSITE && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+function installCard() {
+  if (!IS_WEBSITE || isInstalled() || store.get('bd.installHidden', false)) return '';
+  const how = installPrompt
+    ? '<button class="small" data-act="install">Install app</button>'
+    : IS_IOS
+      ? '<p class="fine">Tap the <b>Share</b> button <span aria-hidden="true">(the square with an arrow)</span>, then <b>Add to Home Screen</b>.</p>'
+      : '<p class="fine">Open your browser menu and choose <b>Install app</b> or <b>Add to Home screen</b>.</p>';
+  return `<div class="card"><div class="row between"><h3>Get the app</h3><button class="link" data-act="hideInstall">Not now</button></div>
+    <p>Add Bounce Duel to your home screen. It opens full-screen like a normal app, and you stay logged in.</p>${how}</div>`;
+}
+
 // ---------- Sound ----------
 let audio = null, lastHitSound = 0;
 function sfx(freq, dur = 0.07, type = 'square', vol = 0.04, slide = 0) {
@@ -710,6 +740,14 @@ $('tabBody').addEventListener('click', async e => {
   else if (act === 'askDelete' || act === 'cancelDelete') { confirmDelete = act === 'askDelete'; renderApp(); }
   else if (act === 'sound') { muted = !muted; store.set('bd.muted', muted); sfx(660); renderApp(); }
   else if (act === 'loadTop') loadTop();
+  else if (act === 'hideInstall') { store.set('bd.installHidden', true); renderApp(); }
+  else if (act === 'install' && installPrompt) {
+    installPrompt.prompt();
+    const choice = await installPrompt.userChoice.catch(() => null);
+    installPrompt = null;
+    if (choice?.outcome === 'accepted') toast('Bounce Duel is on your home screen!');
+    renderApp();
+  }
 });
 $('tabBody').addEventListener('submit', e => {
   e.preventDefault();
@@ -746,6 +784,7 @@ function playTab() {
     <div class="hero"><h1>BOUNCE DUEL</h1>
       <p>Two cubes bounce around a square room. Spikes orbit each cube and every hit does 1 damage. Use your power at the right moment. First to 0 HP loses.</p></div>
     ${reward}
+    ${installCard()}
     <div class="big-buttons">
       <button data-act="play1p">Single player</button>
       <button data-act="play2p">Two players</button>
