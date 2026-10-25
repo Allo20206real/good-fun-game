@@ -882,6 +882,7 @@ $('tabbar').addEventListener('click', e => {
   if (!b) return;
   tab = b.dataset.tab;
   if (tab !== 'groups') groupView = null;
+  profileNotice = '';
   renderApp();
   $('tabBody').scrollTop = 0;
 });
@@ -925,11 +926,12 @@ $('tabBody').addEventListener('click', async e => {
     mode = '1p'; isEvent = act === 'playEvent';
     openSetup();
   } else if (act === 'playOnline') {
-    if (!MULTIPLAYER) return toast('Online matches are not switched on yet.');
-    if (!me) { tab = 'profile'; renderApp(); return toast('Log in or create an account to play online.'); }
+    if (!MULTIPLAYER) return toast('Two-player works in the Bounce Duel app and on the website.');
+    if (!me) return openLogin('create', 'Log in or create an account to play two-player. Your coins and score are saved too.');
     if (needsUsername) return showUsernamePicker(me.name);
     startMatchmaking();
   } else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
+  else if (act === 'loginPrompt') openLogin(b.dataset.pm, 'Log in to save your coins and score, and to play two-player online.');
   else if (act === 'claimDaily') busy(b, claimDailyReward);
   else if (act === 'claimChallenge') busy(b, () => claimChallenge(b.dataset.id));
   else if (act === 'buy') busy(b, () => buySkin(b.dataset.id));
@@ -989,9 +991,12 @@ function playTab() {
       <p>Two cubes bounce around a square room. Spikes orbit each cube and every hit does 1 damage. Use your power at the right moment. First to 0 HP loses.</p></div>
     ${reward}
     ${installCard()}
+    ${me || !ONLINE ? '' : `<div class="card"><h3>You're playing as a guest</h3>
+      <p>Log in to save your coins and your two-player score, and to play two-player online against real people.</p>
+      <div class="row"><button class="small" data-act="loginPrompt" data-pm="create">Create account</button><button class="small ghost" data-act="loginPrompt" data-pm="login">Log in</button></div></div>`}
     <div class="big-buttons">
       <button data-act="play1p">Single player</button>
-      <button data-act="playOnline">Two players<br><span style="font-size:13px;font-weight:600">Play online</span></button>
+      <button data-act="playOnline" ${me ? '' : 'class="ghost"'}>Two players<br><span style="font-size:13px;font-weight:600">${!MULTIPLAYER ? 'In the app' : me ? 'Play online' : 'Log in to play'}</span></button>
     </div>
     <div class="card event">
       <div class="row between"><span class="eyebrow" style="color:var(--event)">This week's event</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
@@ -999,7 +1004,7 @@ function playTab() {
       <p>${w.event.desc} Event matches against the CPU pay 50% more coins.</p>
       <button class="event-btn" data-act="playEvent">Play event match</button>
     </div>
-    ${me ? '' : `<div class="card"><p>You're playing as a guest. <button class="link" data-act="goto" data-to="profile">Create an account</button> to earn coins, keep your score, join groups and log in on any device.</p></div>`}`;
+`;
 }
 
 // ---------- Events tab ----------
@@ -1167,6 +1172,11 @@ async function leaveGroup(code) {
 
 // ---------- Profile tab (log in / create account) ----------
 let profileMode = 'create';
+let profileNotice = '';    // why the player was sent here to log in
+function openLogin(pm, notice = '') {
+  profileMode = pm; profileNotice = notice; tab = 'profile';
+  show('app'); $('tabBody').scrollTop = 0;
+}
 let confirmDelete = false;
 function profileTab() {
   const sound = `<div class="row between"><button class="ghost small" data-act="sound">Sound: ${muted ? 'off' : 'on'}</button>
@@ -1203,7 +1213,8 @@ function profileTab() {
       </div>${sound}`;
   }
   const creating = profileMode === 'create', resetting = profileMode === 'reset';
-  return `
+  const notice = profileNotice ? `<div class="card reward"><b>${escapeHtml(profileNotice)}</b></div>` : '';
+  return `${notice}
     <div class="card">
       <div class="seg">
         <button class="small ${creating ? '' : 'ghost'}" data-pm="create">Create account</button>
@@ -1246,6 +1257,7 @@ function wireProfile() {
         if (needsUsername) return;
         toast(`Welcome back, ${doc.name}!`);
       }
+      profileNotice = '';
       tab = 'play'; renderApp();
     }, $('authErr'));
   };
@@ -2155,7 +2167,7 @@ async function showResult(winner, mine, oppName) {
   if (mode === 'online' && winner) lines.push(`<div class="fine">${won ? `You beat ${escapeHtml(oppName || 'your opponent')}` : `${escapeHtml(winner.name)} won`} with ${winner.hp} HP left</div>`);
   const coins = matchCoins(won, winner);
   if (!me) {
-    lines.push(`<div class="line">${coinHtml(coins)} coins not saved. Log in to keep your coins.</div>`);
+    lines.push(`<div class="line">${coinHtml(coins)} coins not saved. <b>Log in to save your coins and score</b>, and to play two-player online.</div>`);
   } else {
     try {
       const challenges = dailyChallenges();
