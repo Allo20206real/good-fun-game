@@ -23,6 +23,7 @@
     margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none; touch-action: manipulation; -webkit-text-size-adjust: 100%;
   }
   canvas#c { display: block; touch-action: none; position: fixed; inset: 0; }
   .hidden { display: none !important; }
@@ -475,7 +476,10 @@ function seeded(str) {
 }
 function dailyChallenges(day = dayKey()) {
   const rnd = seeded(day);
-  const pool = CHALLENGE_POOL.slice().sort(() => rnd() - 0.5).slice(0, 3);
+  // Fisher-Yates shuffle, so every phone and browser picks the same three
+  const pool = CHALLENGE_POOL.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  pool.length = 3;
   return pool.map(c => {
     if (c.id !== 'spike') return c;
     const ids = Object.keys(SPIKES), sp = ids[Math.floor(rnd() * ids.length)];
@@ -589,7 +593,10 @@ resize();
 
 const unit = p => p.unit || U;
 const sizeOf = p => 64 * unit(p);
-const orbitOf = p => 130 * unit(p);
+// Overtime: after 90 seconds the spike circles slowly grow (up to 60%), so long matches always end
+const OVERTIME_AT = 90;
+const overtime = () => 1 + Math.min(0.6, Math.max(0, elapsed - OVERTIME_AT) / 100);
+const orbitOf = p => 130 * unit(p) * (p.unit ? 1 : overtime());
 const baseSpeed = () => 320 * U * mods.speed;
 
 // ============================================================================
@@ -610,7 +617,7 @@ let state = 'menu';          // menu | place | aim | countdown | play | over
 let placing = 0;
 let mouse = { x: W / 2, y: H / 2 };
 let aimPress = false;        // pointer went down while aiming (so the placing tap doesn't also launch)
-let elapsed = 0, countdown = 0, clock = 0, shake = 0;
+let elapsed = 0, countdown = 0, clock = 0, shake = 0, goFlash = 0;
 let particles = [], popups = [];
 let muted = store.get('bd.muted', false);
 
@@ -632,7 +639,7 @@ window.bdBack = () => {
 
 // ---------- Install as an app (website only) ----------
 // On the website the game can be added to the home screen and then runs full-screen like an app
-const IS_WEBSITE = /^https?:$/.test(location.protocol) && !window.ReactNativeWebView && !window.claude;
+const IS_WEBSITE = /^https?:$/.test(location.protocol) && location.hostname !== 'bounce-duel.local' && !window.ReactNativeWebView && !window.claude;
 const isInstalled = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
 const IS_IOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const IS_ANDROID = /android/i.test(navigator.userAgent);
@@ -666,6 +673,7 @@ function sfx(freq, dur = 0.07, type = 'square', vol = 0.04, slide = 0) {
   if (muted) return;
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    if (audio.state !== 'running') audio.resume().catch(() => {});
     const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
     o.type = type; o.frequency.setValueAtTime(freq, t);
     if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
@@ -1443,29 +1451,44 @@ function cpuThink(p, dt) {
 }
 
 // ---------- Update ----------
+const MAX_PARTICLES = 160;
 function burst(x, y, color, n = 10) {
+  n = Math.min(n, MAX_PARTICLES - particles.length);
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, sp = (60 + Math.random() * 180) * U;
     particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.4 + Math.random() * 0.3, color });
   }
 }
 
+// Sparks, pop-up text and screen shake only need updating once per frame
+function updateEffects(dt) {
+  let n = 0;
+  for (const pt of particles) {
+    pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.life -= dt;
+    if (pt.life > 0) particles[n++] = pt;
+  }
+  particles.length = n;
+  for (const pp of popups) { pp.y -= 30 * dt; pp.life -= dt; }
+  if (popups.length) popups = popups.filter(pp => pp.life > 0);
+  shake = Math.max(0, shake - dt * 30);
+  goFlash = Math.max(0, goFlash - dt);
+}
+
 function update(dt) {
   clock += dt;
-  for (const pt of particles) { pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.life -= dt; }
-  particles = particles.filter(pt => pt.life > 0);
-  for (const pp of popups) { pp.y -= 30 * dt; pp.life -= dt; }
-  popups = popups.filter(pp => pp.life > 0);
-  shake = Math.max(0, shake - dt * 30);
 
   if (state === 'countdown') {
     const before = Math.ceil(countdown / 0.8);
     countdown -= dt;
     if (Math.ceil(countdown / 0.8) !== before && countdown > 0) { sfx(440, 0.12); buzz('selection'); }
-    if (countdown <= 0) { state = 'play'; sfx(880, 0.2); buzz('heavy'); }
+    if (countdown <= 0) { state = 'play'; goFlash = 0.6; sfx(880, 0.2); buzz('heavy'); }
     return;
   }
   if (state !== 'play') return;
+  if (elapsed < OVERTIME_AT && elapsed + dt >= OVERTIME_AT) {
+    popups.push({ x: W / 2, y: AY + AS / 2, text: 'OVERTIME! Spikes are growing', color: '#ffcf3f', life: 2, big: true });
+    sfx(220, 0.4, 'sawtooth', 0.05, 2); buzz('heavy');
+  }
   elapsed += dt;
   // Gets faster over time so matches don't drag on
   const speedMul = Math.min(4, 1 + elapsed / 25);
@@ -1502,6 +1525,12 @@ function update(dt) {
       else [a[v], b[v]] = [b[v], a[v]];
       sfx(180, 0.05, 'triangle', 0.05);
     }
+    // A bump next to a wall can push a cube into it; keep both inside the room
+    for (const p of players) {
+      const h = sizeOf(p) / 2;
+      p.x = Math.min(AX + AS - h, Math.max(AX + h, p.x));
+      p.y = Math.min(AY + AS - h, Math.max(AY + h, p.y));
+    }
   }
 
   // Spikes deal 1 damage to the other cube
@@ -1517,7 +1546,7 @@ function update(dt) {
     if (!tgt.isCpu) buzz('light');
     tgt.flash = 0.15;
     shake = Math.min(8, shake + 1.5);
-    burst(hit.x, hit.y, atk.color);
+    burst(hit.x, hit.y, atk.color, 4);
     if (clock - lastHitSound > 0.06) { lastHitSound = clock; sfx(120 + Math.random() * 60, 0.06, 'square', 0.035); }
   }
 
@@ -1564,6 +1593,7 @@ async function endMatch(dead) {
   const humans = players.filter(p => !p.isCpu);
   const sessions = humans.map(p => (p.i === 0 ? auth1 : auth2));
   results.innerHTML = sessions.some(Boolean) ? '<div class="fine">Saving…</div>' : '';
+  $('againBtn').disabled = true;
   setTimeout(() => { if (state === 'over') $('over').classList.remove('hidden'); }, 700);
 
   const lines = [];
@@ -1606,6 +1636,7 @@ async function endMatch(dead) {
   }
   if (isEvent) lines.push(`<div class="fine">Event match bonus: +50% coins</div>`);
   if (state === 'over') results.innerHTML = lines.join('');
+  $('againBtn').disabled = false;
 }
 
 // ============================================================================
@@ -1712,7 +1743,7 @@ function drawCube(p, ghost) {
   ctx.font = `bold ${Math.round(15 * Math.max(U, 0.8))}px system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = p.color;
-  ctx.fillText(p.name, p.x, p.y - h - 12);
+  ctx.fillText(fitText(p.name, Math.max(110, s * 2.4)), p.x, p.y - h - 12);
   const bw = s + 10;
   ctx.fillStyle = '#333'; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw, 5);
   ctx.fillStyle = p.color; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw * p.hp / p.maxHp, 5);
@@ -1756,6 +1787,14 @@ function drawSpikes(c, p) {
   c.beginPath(); c.arc(p.x, p.y, orbitOf(p) * def.orbit, 0, Math.PI * 2); c.stroke();
 }
 
+// Shorten text with "…" so it fits a width, keeping the ending (the HP number) visible
+function fitText(text, width, keep = '') {
+  if (ctx.measureText(text).width <= width) return text;
+  let head = text.slice(0, text.length - keep.length);
+  while (head.length > 1 && ctx.measureText(head + '…' + keep).width > width) head = head.slice(0, -1);
+  return head + '…' + keep;
+}
+
 function drawHud() {
   const bw = Math.min(320, W / 2 - 40);
   const top = 12 + safeTop;
@@ -1769,7 +1808,7 @@ function drawHud() {
     ctx.font = 'bold 13px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
     ctx.textAlign = i === 0 ? 'left' : 'right';
-    ctx.fillText(`${p.name}  ${p.hp}`, i === 0 ? x + 6 : x + bw - 6, top + 11);
+    ctx.fillText(fitText(`${p.name}  ${p.hp}`, bw - 12, `  ${p.hp}`), i === 0 ? x + 6 : x + bw - 6, top + 11);
   });
 }
 
@@ -1877,7 +1916,7 @@ function draw() {
   ctx.globalAlpha = 1;
   for (const pp of popups) {
     ctx.globalAlpha = Math.min(1, pp.life * 2);
-    ctx.fillStyle = pp.color; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = pp.color; ctx.font = `bold ${pp.big ? Math.round(24 * Math.max(U, 0.8)) : 18}px system-ui, sans-serif`; ctx.textAlign = 'center';
     ctx.fillText(pp.text, pp.x, pp.y);
   }
   ctx.globalAlpha = 1;
@@ -1885,11 +1924,11 @@ function draw() {
 
   drawHud();
   if (state === 'play' || state === 'countdown') drawPowerButtons();
-  if (state === 'countdown') {
-    const n = Math.ceil(countdown / 0.8);
+  if (state === 'countdown' || goFlash > 0) {
+    const n = state === 'countdown' ? Math.ceil(countdown / 0.8) : 0;
     ctx.fillStyle = '#fff'; ctx.font = `800 ${Math.round(90 * U)}px system-ui, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.globalAlpha = 0.9;
+    ctx.globalAlpha = n > 0 ? 0.9 : Math.min(0.9, goFlash * 2);
     ctx.fillText(n > 0 ? n : 'GO!', W / 2, H / 2);
     ctx.globalAlpha = 1;
   }
@@ -1911,6 +1950,7 @@ function loop(now) {
   last = now;
   // Sub-step so fast cubes and spikes don't skip through each other
   for (let i = 0; i < 4; i++) update(dt / 4);
+  updateEffects(dt);
   draw();
   requestAnimationFrame(loop);
 }
