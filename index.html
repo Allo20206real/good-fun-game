@@ -221,7 +221,7 @@
 // ============================================================================
 // Firebase settings. Fill these in from your Firebase project (FIREBASE_SETUP.md).
 // ============================================================================
-const FIREBASE_CONFIG = { apiKey: '', projectId: '' };
+const FIREBASE_CONFIG = { apiKey: 'AIzaSyClzCpoDFc1ogYlb41dJAN9oaAJd1h39a4', projectId: 'bounce-duel' };
 
 const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the local emulator
 const ONLINE = !!(cfg.apiKey && cfg.projectId);
@@ -816,7 +816,7 @@ function shopTab() {
 
 // ---------- Groups tab ----------
 function groupsTab() {
-  if (!ONLINE) return `<div class="card"><h3>Groups</h3><p>Online accounts aren't switched on for this copy of the game yet.</p></div>`;
+  if (!ONLINE) return `<div class="card"><h3>Groups</h3><p>Accounts work in the Bounce Duel app and on the website. This copy of the game is guest-only.</p></div>`;
   if (!me) return `<div class="card"><h3>Play with your friends</h3><p>Make a group, share its code with your friends and see who has the highest score.</p>
     <button data-act="goto" data-to="profile">Log in or create an account</button></div>`;
   if (groupView) return `<div class="card" id="groupDetail"><button class="link" data-act="closeGroup">← All groups</button><p class="fine">Loading group…</p></div>`;
@@ -928,7 +928,7 @@ let confirmDelete = false;
 function profileTab() {
   const sound = `<div class="row between"><button class="ghost small" data-act="sound">Sound: ${muted ? 'off' : 'on'}</button>
     <a class="fine" href="${PRIVACY_URL}" target="_blank" rel="noopener" style="color:var(--muted)">Privacy policy</a></div>`;
-  if (!ONLINE) return `<div class="card"><h3>Account</h3><p>Online accounts aren't switched on for this copy of the game yet.</p></div>${sound}`;
+  if (!ONLINE) return `<div class="card"><h3>Account</h3><p>Accounts work in the Bounce Duel app and on the website. This copy of the game is guest-only.</p></div>${sound}`;
   if (me) {
     return `
       <div class="card">

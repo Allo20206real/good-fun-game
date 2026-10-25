@@ -71,7 +71,7 @@ Create an account with just an email and password on the **Profile** tab, then l
 - Every account starts with a score of **100** and **50 coins**.
 - When a two-player match ends, the winner **gains** points equal to the HP they have left and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all and you lose 100. The score can't go below 0.
 
-Accounts are stored in Firebase. **See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) to connect your Firebase project** — until then the game runs in guest mode. The security rules in `firestore.rules` stop players from changing other people's accounts, giving themselves large amounts of coins or score, or taking skins without paying.
+Accounts are stored in the `bounce-duel` Firebase project (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for how it's set up). The security rules in `firestore.rules` stop players from changing other people's accounts, giving themselves large amounts of coins or score, or taking skins without paying.
 
 ## Play it
 
