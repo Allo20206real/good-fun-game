@@ -79,6 +79,7 @@ Create an account with just an email and password on the **Profile** tab, then l
 - Every account starts with a score of **100** and **50 coins**.
 - When a two-player match ends, the winner **gains** points equal to the HP they have left and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all and you lose 100. The score can't go below 0.
 - Your score gives you a rank: Bronze (0), Silver (150), Gold (300), Platinum (500), Diamond (800) and Legend (1200), shown next to names on every leaderboard.
+- Leaving an online match on purpose (✕, Esc, back or Leave) costs **50** points, or what losing right then would cost if you're behind (the other player's HP). If the other player drops out, nobody loses points.
 - Beating the CPU adds score too: **+3** on Easy, **+6** on Normal and **+10** on Hard, so one Hard win counts for more than three Easy wins. Losing to the CPU takes no score away.
 
 Accounts are stored in the `bounce-duel` Firebase project (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for how it's set up). The security rules in `firestore.rules` stop players from changing other people's accounts, giving themselves large amounts of coins or score, or taking skins without paying.
