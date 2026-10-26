@@ -89,7 +89,10 @@
   .row.between { justify-content: space-between; }
   .grow { flex: 1; min-width: 0; }
   .rank-badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; border: 1px solid; border-radius: 999px; padding: 1px 6px; vertical-align: middle; }
-  .friend-card .err:empty { display: none; }
+  button.friend-btn { display: block; margin: 0 auto; padding: 8px 16px; }
+  .friend-panel { width: min(340px, 100%); margin: 4px auto 8px; display: flex; flex-direction: column; gap: 10px; }
+  .friend-panel .or { color: var(--muted); font-size: 13px; text-align: center; }
+  .friend-panel .err:empty { display: none; }
   .room-code { font-size: 44px; font-weight: 900; letter-spacing: 10px; margin: 8px 0 12px; }
   .code-input { text-transform: uppercase; letter-spacing: 4px; font-weight: 800; }
   button.tower-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 16px 18px; font-size: 19px; font-weight: 800;
@@ -1032,11 +1035,8 @@ $('tabBody').addEventListener('click', async e => {
     if (!me) return openLogin('create', 'Log in or create an account to play two-player. Your coins and score are saved too.');
     if (needsUsername) return showUsernamePicker(me.name);
     startMatchmaking();
-  } else if (act === 'roomCreate') {
-    if (!me) return openLogin('create', 'Log in or create an account to play a friend.');
-    if (needsUsername) return showUsernamePicker(me.name);
-    startMatchmaking(newRoomCode());
-  } else if (act === 'tower') openTower();
+  } else if (act === 'friend') openFriendPanel();
+  else if (act === 'tower') openTower();
   else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
   else if (act === 'loginPrompt') openLogin(b.dataset.pm, 'Log in to save your coins and score, and to play two-player online.');
   else if (act === 'claimDaily') busy(b, claimDailyReward);
@@ -1065,7 +1065,6 @@ $('tabBody').addEventListener('click', async e => {
 $('tabBody').addEventListener('submit', e => {
   e.preventDefault();
   const f = e.target;
-  if (f.id === 'roomForm') { try { joinRoom(f.querySelector('input').value); } catch (err) { $('roomErr').textContent = err.message; } }
   if (f.id === 'createGroupForm') busy(f.querySelector('button'), () => createGroup(f.querySelector('input').value), $('groupErr'));
   if (f.id === 'joinGroupForm') busy(f.querySelector('button'), () => joinGroup(f.querySelector('input').value), $('groupErr'));
   if (f.id === 'deleteForm') busy(f.querySelector('button'), () => deleteAccount($('deletePass').value), $('deleteErr'));
@@ -1108,10 +1107,7 @@ function playTab() {
       <button data-act="play1p">Single player</button>
       <button data-act="playOnline" ${me ? '' : 'class="ghost"'}>Two players<br><span style="font-size:13px;font-weight:600">${!MULTIPLAYER ? 'In the app' : me ? 'Play online' : 'Log in to play'}</span></button>
     </div>
-    ${MULTIPLAYER ? `<div class="card friend-card"><div class="row between"><h3>Play a friend</h3><button class="small" data-act="roomCreate">Make a room</button></div>
-      <p class="fine">Make a room and send the code to a friend, or type their code here.</p>
-      <form id="roomForm" class="row"><input class="grow code-input" maxlength="4" placeholder="CODE" value="${escapeHtml(pendingRoom)}" autocapitalize="characters" spellcheck="false" aria-label="Room code"><button class="small ghost">Join</button></form>
-      <p class="err" id="roomErr"></p></div>` : ''}
+    ${MULTIPLAYER ? '<button class="small ghost friend-btn" data-act="friend">Play with a friend</button>' : ''}
     <button class="tower-btn" data-act="tower"><span>The Tower<small>Climb ${TOWER_STAGES.length} stages · weekly tournament</small></span><span aria-hidden="true">→</span></button>
     <div class="card event">
       <div class="row between"><span class="eyebrow" style="color:var(--event)">This week's event</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
@@ -1957,7 +1953,7 @@ async function startMatchmaking(room = null) {
   lastRoom = room;
   state = 'menu'; players = [];
   if (room) {
-    mmShow('Friend room', 'Waiting for your friend… Send them the code or the link. They tap Play a friend and type the code.', { onButton: () => cancelMatchmaking(null) });
+    mmShow('Friend room', 'Waiting for your friend… Send them the code or the link. They tap Play with a friend and type the code.', { onButton: () => cancelMatchmaking(null) });
     $('mmExtra').innerHTML = `<div class="room-code">${room}</div><button class="small" id="roomShare">Send invite link</button>`;
     $('roomShare').onclick = () => shareRoom(room);
   } else mmShow('Matchmaking…', 'Looking for another player', { onButton: () => cancelMatchmaking(null) });
@@ -1983,7 +1979,7 @@ async function startMatchmaking(room = null) {
     // Time's up. Last check that nobody paired with us at the final second
     const last = await rtdb('GET', `queue/${myId}/match`).catch(() => null);
     if (last?.id && last.by !== myId && !sess.found) { sess.found = true; return foundMatch(sess, last.id, 'guest'); }
-    cancelMatchmaking(room ? "Your friend didn't join in time. Make a new room and try again!" : 'No other players are searching right now. Try again in a bit, or make a room and play a friend!');
+    cancelMatchmaking(room ? "Your friend didn't join in time. Make a new room and try again!" : 'No other players are searching right now. Try again in a bit, or tap Play with a friend!');
   } catch (e) {
     cancelMatchmaking(e.message === 'DENIED' ? 'Online matches are not set up on the server yet.' : e.message);
   }
@@ -2000,11 +1996,26 @@ async function shareRoom(room) {
   try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Invite link copied'); }
   catch { toast(`Room code: ${room}`); }
 }
+// The Play with a friend screen: make a room, or join one with a code
+function openFriendPanel() {
+  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
+  if (needsUsername) return showUsernamePicker(me.name);
+  mmShow('Play with a friend', 'Make a room and send the code to a friend, or type the code your friend sent you.', { spin: false, button: 'Back' });
+  $('mmExtra').innerHTML = `<div class="friend-panel"><button id="roomMake">Make a room</button>
+    <div class="or">or join a room</div>
+    <form id="roomForm" class="row"><input class="grow code-input" maxlength="4" placeholder="CODE" value="${escapeHtml(pendingRoom)}" autocapitalize="characters" spellcheck="false" aria-label="Room code"><button class="ghost">Join</button></form>
+    <p class="err" id="roomErr"></p></div>`;
+  $('roomMake').onclick = () => startMatchmaking(newRoomCode());
+  $('roomForm').onsubmit = e => {
+    e.preventDefault();
+    try { joinRoom($('roomForm').querySelector('input').value); } catch (err) { $('roomErr').textContent = err.message; }
+  };
+}
 function joinRoom(code) {
   code = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (code.length !== 4) throw new GameError('Room codes are 4 letters or numbers.');
   if (!MULTIPLAYER) throw new GameError('Friend rooms work in the Bounce Duel app and on the website.');
-  if (!me) return openLogin('create', 'Log in or create an account to play a friend.');
+  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
   if (needsUsername) return showUsernamePicker(me.name);
   pendingRoom = '';
   startMatchmaking(code);
@@ -3595,7 +3606,7 @@ restoreSession().then(() => {
   // Opened from a friend's invite link
   if (pendingRoom) {
     if (me && !needsUsername) { try { joinRoom(pendingRoom); } catch (e) { toast(e.message); } }
-    else if (!needsUsername && ONLINE) toast(`Log in, then tap Join to play in room ${pendingRoom}`);
+    else if (!needsUsername && ONLINE) toast(`Log in, then tap Play with a friend to join room ${pendingRoom}`);
   }
 });
 requestAnimationFrame(loop);
