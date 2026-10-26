@@ -14,15 +14,40 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/usernames/$(n.lower())).data.uid == request.auth.uid;
     }
 
+    // The Tower's week number (weeks start Monday 00:00 UTC, counted from 1 January 2024)
+    function curWeek() {
+      return int(math.floor((request.time.toMillis() - 1704067200000) / 604800000.0));
+    }
+
+    // Tower progress on an account: { week, cleared, prize }
+    function tw(d) {
+      return d.get('tower', {'week': -1, 'cleared': false, 'prize': -1});
+    }
+
+    // First climb of the week: worth up to 500 coins, once, after a saved time
+    function firstClear(a, b) {
+      return b.week == curWeek() && b.cleared == true && b.prize == a.prize
+        && !(a.week == b.week && a.cleared == true)
+        && 'best' in get(/databases/$(database)/documents/tower/$(string(curWeek()))/runs/$(request.auth.uid)).data;
+    }
+
+    // The fastest climber of a finished week collects 2000 coins and the Champion skin, once per week
+    function prizeClaim(a, b) {
+      return b.prize > a.prize && b.prize < curWeek() && b.week == a.week && b.cleared == a.cleared
+        && get(/databases/$(database)/documents/towerBest/$(string(b.prize))).data.uid == request.auth.uid;
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
         && d.skins is list && d.skins.size() <= 30
         && d.groups is list && d.groups.size() <= 10
         && d.wins1p is int && d.losses1p is int && d.wins2p is int && d.losses2p is int
-        && d.daily is map && d.streak is map;
+        && d.daily is map && d.streak is map
+        && tw(d).keys().hasOnly(['week', 'cleared', 'prize'])
+        && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int;
     }
 
     // Player accounts. Anyone signed in can read them (for leaderboards); only the owner can change theirs.
@@ -34,7 +59,8 @@ service cloud.firestore {
         && ownsName(request.resource.data.name)
         && request.resource.data.score == 100
         && request.resource.data.coins == 50
-        && request.resource.data.skins.size() == 2;
+        && request.resource.data.skins.size() == 2
+        && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1};
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -43,15 +69,61 @@ service cloud.firestore {
         // A two-player match moves the score by at most 100
         && request.resource.data.score - resource.data.score <= 100
         && resource.data.score - request.resource.data.score <= 100
-        // No single save can add more than 300 coins
-        && request.resource.data.coins - resource.data.coins <= 300
-        // A new skin has to be paid for
+        // Tower progress only changes by a first climb or a tournament prize
+        && (tw(request.resource.data) == tw(resource.data)
+            || firstClear(tw(resource.data), tw(request.resource.data))
+            || prizeClaim(tw(resource.data), tw(request.resource.data)))
+        // No single save can add more than 300 coins (500 for a first Tower climb, 2000 for a Tower prize)
+        && (request.resource.data.coins - resource.data.coins <= 300
+            || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
+            || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data))))
+        // A new skin has to be paid for, except the Champion skin, which only comes with a Tower prize
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
-                && resource.data.coins - request.resource.data.coins >= 50));
+                && !('champion' in request.resource.data.skins && !('champion' in resource.data.skins))
+                && resource.data.coins - request.resource.data.coins >= 50)
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && 'champion' in request.resource.data.skins
+                && prizeClaim(tw(resource.data), tw(request.resource.data))));
 
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Tower climbs. One doc per player per week; the server's clock times the climb.
+    match /tower/{week}/runs/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && week == string(curWeek())
+        && request.resource.data.keys().hasOnly(['name', 'skin', 'start', 'best'])
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(uid)).data.name
+        && request.resource.data.skin is string && request.resource.data.skin.size() <= 20
+        && (
+          // Starting a climb: the start time is the server's clock and the best time stays the same
+          (request.resource.data.start == request.time
+            && ((resource == null && !('best' in request.resource.data))
+                || (resource != null && request.resource.data.get('best', -1) == resource.data.get('best', -1))))
+          ||
+          // Finishing: a faster time that fits in the real time since the climb started (and at least 3 minutes)
+          (resource != null && request.resource.data.start == resource.data.start
+            && request.resource.data.name == resource.data.name
+            && request.resource.data.best is int && request.resource.data.best >= 180000
+            && request.resource.data.best < resource.data.get('best', 1000000000)
+            && request.resource.data.best <= request.time.toMillis() - resource.data.start.toMillis() + 5000)
+        );
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // The fastest climb of each week, which wins the tournament
+    match /towerBest/{week} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && week == string(curWeek())
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'time'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 16
+        && request.resource.data.time == get(/databases/$(database)/documents/tower/$(week)/runs/$(request.auth.uid)).data.best
+        && (resource == null || request.resource.data.time < resource.data.time);
     }
 
     // Usernames are unique: the doc id is the lowercase username, and it records who owns it.

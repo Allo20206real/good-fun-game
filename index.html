@@ -88,6 +88,13 @@
   .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .row.between { justify-content: space-between; }
   .grow { flex: 1; min-width: 0; }
+  button.tower-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 16px 18px; font-size: 19px; font-weight: 800;
+    color: #0b0b10; background: linear-gradient(100deg, #4ade80, #38bdf8 30%, #c084fc 55%, #fb7185 78%, #facc15); }
+  button.tower-btn small { display: block; font-size: 13px; font-weight: 600; opacity: .8; }
+  .tower-flag { background: linear-gradient(100deg, #4ade80, #38bdf8, #c084fc, #fb7185, #facc15); color: #0b0b10; font-weight: 800; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+  .tower-eyebrow { background: linear-gradient(100deg, #4ade80, #38bdf8, #c084fc, #fb7185, #facc15); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tower-info p { margin: 0 0 10px; }
+  .tower-time { font-size: 44px; font-weight: 900; letter-spacing: 1px; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
   .big-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .big-buttons button { padding: 18px 12px; font-size: 18px; }
   .hero { text-align: center; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
@@ -574,8 +581,9 @@ const SKINS = [
   { id: 'gold', name: 'Gold', price: 450 },
   { id: 'galaxy', name: 'Galaxy', price: 650 },
   { id: 'rainbow', name: 'Rainbow', price: 1000 },
+  { id: 'champion', name: 'Champion', price: 0, prize: true },   // only from winning the weekly Tower tournament
 ];
-const FREE_SKINS = SKINS.filter(s => !s.price).map(s => s.id);
+const FREE_SKINS = SKINS.filter(s => !s.price && !s.prize).map(s => s.id);
 const SPIKES = {
   classic: { name: 'Classic', desc: 'One sharp spike. Balanced.', count: 1, kind: 'tri', len: 36, w: 18, spin: 4.5, orbit: 1 },
   twin:    { name: 'Twin', desc: 'Two smaller spikes on opposite sides, spinning slower.', count: 2, kind: 'tri', len: 22, w: 12, spin: 2.6, orbit: 1, hitCd: 0.03 },
@@ -697,6 +705,7 @@ function normalizeUser(d) {
   d.daily = d.daily || { day: '', progress: {}, claimed: [] };
   d.daily.progress = d.daily.progress || {}; d.daily.claimed = d.daily.claimed || [];
   d.streak = d.streak || { last: '', count: 0 };
+  d.tower = { week: -1, cleared: false, prize: -1, ...(d.tower || {}) };
   for (const k of ['score', 'coins', 'wins1p', 'losses1p', 'wins2p', 'losses2p']) d[k] = d[k] || 0;
   return d;
 }
@@ -707,7 +716,7 @@ async function loadUser(sess) {
 }
 async function createUser(sess, username) {
   const d = newUserDoc(username);
-  try { await createDoc(sess, 'users/' + sess.uid, d); return d; }
+  try { await createDoc(sess, 'users/' + sess.uid, d); return normalizeUser(d); }
   catch (e) { if (e.message !== 'EXISTS') throw e; return loadUser(sess); }
 }
 // True when the account's name is a username it owns (older accounts may not have one yet)
@@ -718,9 +727,12 @@ async function hasUsername(sess, doc) {
 async function mutateUser(sess, fn) {
   const d = await loadUser(sess);
   if (!d) throw new GameError('Pick a username first.');
+  const towerBefore = JSON.stringify(d.tower);
   fn(d);
-  const { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak } = d;
-  await updateDoc(sess, 'users/' + sess.uid, { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak });
+  const { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak, tower } = d;
+  const data = { name, score, coins, skins, wins1p, losses1p, wins2p, losses2p, groups, daily, streak };
+  if (JSON.stringify(tower) !== towerBefore) data.tower = tower;   // only saved when Tower progress changes
+  await updateDoc(sess, 'users/' + sess.uid, data);
   if (sess === auth1) me = d;
   return d;
 }
@@ -740,6 +752,7 @@ async function finishLogin(sess) {
   login1(sess, doc);
   needsUsername = !(await hasUsername(sess, doc));
   if (needsUsername) showUsernamePicker(doc ? doc.name : '');
+  else checkTowerPrizes();
   return doc;
 }
 async function restoreSession() {
@@ -862,7 +875,7 @@ function buzz(kind) {
 }
 // Android back button: step back through the game, and only leave the app from the Play tab
 window.bdBack = () => {
-  if (['place', 'aim', 'countdown', 'play'].includes(state)) return $('quitBtn').click();
+  if (['place', 'aim', 'countdown', 'play', 'tower'].includes(state)) return $('quitBtn').click();
   if (!$('setup').classList.contains('hidden') || !$('over').classList.contains('hidden')) return show('app');
   if (groupView) { groupView = null; return renderApp(); }
   if (tab !== 'play') { tab = 'play'; return renderApp(); }
@@ -920,7 +933,7 @@ function sfx(freq, dur = 0.07, type = 'square', vol = 0.04, slide = 0) {
 const screens = ['app', 'setup', 'over', 'mm'];
 function show(name) {
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
-  if (name !== 'over') { state = 'menu'; players = []; }
+  if (name !== 'over') { state = 'menu'; players = []; tower = null; towerPtrs.clear(); }
   native({ type: 'awake', on: false });
   $('quitBtn').classList.add('hidden');
   if (name === 'app') renderApp();
@@ -961,6 +974,7 @@ function renderApp() {
   const body = $('tabBody');
   body.innerHTML = `<div class="tab-inner">${({ play: playTab, events: eventsTab, shop: shopTab, groups: groupsTab, profile: profileTab })[tab]()}</div>`;
   if (tab === 'groups') loadGroups();
+  if (tab === 'events') loadTowerLb($('towerLb'), 10);
   if (tab === 'profile') wireProfile();
   drawStaticSkins(body);
   tickTimers();
@@ -979,7 +993,8 @@ $('tabBody').addEventListener('click', async e => {
     if (!me) return openLogin('create', 'Log in or create an account to play two-player. Your coins and score are saved too.');
     if (needsUsername) return showUsernamePicker(me.name);
     startMatchmaking();
-  } else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
+  } else if (act === 'tower') openTower();
+  else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
   else if (act === 'loginPrompt') openLogin(b.dataset.pm, 'Log in to save your coins and score, and to play two-player online.');
   else if (act === 'claimDaily') busy(b, claimDailyReward);
   else if (act === 'claimChallenge') busy(b, () => claimChallenge(b.dataset.id));
@@ -1049,13 +1064,14 @@ function playTab() {
       <button data-act="play1p">Single player</button>
       <button data-act="playOnline" ${me ? '' : 'class="ghost"'}>Two players<br><span style="font-size:13px;font-weight:600">${!MULTIPLAYER ? 'In the app' : me ? 'Play online' : 'Log in to play'}</span></button>
     </div>
+    <button class="tower-btn" data-act="tower"><span>The Tower<small>Climb ${TOWER_STAGES.length} stages · weekly tournament</small></span><span aria-hidden="true">→</span></button>
     <div class="card event">
       <div class="row between"><span class="eyebrow" style="color:var(--event)">This week's event</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
       <h2>${w.event.name}</h2>
       <p>${w.event.desc} Event matches against the CPU pay 50% more coins.</p>
       <button class="event-btn" data-act="playEvent">Play event match</button>
     </div>
-    <p class="fine desk-only">On a computer: <b>Space</b> or <b>A</b> uses your power, <b>Esc</b> leaves a match.</p>
+    <p class="fine desk-only">On a computer: <b>Space</b> or <b>A</b> uses your power, <b>Esc</b> leaves a match. In the Tower, move with the arrow keys and jump with <b>Space</b>.</p>
   </div></div>`;
 }
 
@@ -1089,7 +1105,8 @@ function eventsTab() {
       <div class="row between"><h3>Daily challenges</h3><span class="fine">New in <span class="timer" data-until="${Date.now() + msToMidnight()}"></span></span></div>
       ${me ? '' : '<p class="fine"><button class="link" data-act="goto" data-to="profile">Log in</button> to track challenges and earn coins.</p>'}
       ${list}
-    </div></div>`;
+    </div>
+    ${towerCard()}</div>`;
 }
 
 // ---------- Shop tab ----------
@@ -1099,13 +1116,14 @@ function shopTab() {
     const owned = me ? me.skins.includes(s.id) : FREE_SKINS.includes(s.id);
     const price = salePrice(s), onSale = price !== s.price;
     let btn;
-    if (owned) btn = loadouts[0].skin === s.id ? '<button class="small ghost" disabled>Equipped</button>' : `<button class="small ghost" data-act="equip" data-id="${s.id}">Equip</button>`;
+    if (s.prize && !owned) btn = '<button class="small ghost" data-act="tower">Win the Tower</button>';
+    else if (owned) btn = loadouts[0].skin === s.id ? '<button class="small ghost" disabled>Equipped</button>' : `<button class="small ghost" data-act="equip" data-id="${s.id}">Equip</button>`;
     else if (!me) btn = `<button class="small ghost" data-act="goto" data-to="profile">Log in to buy</button>`;
     else btn = `<button class="small coin-btn" data-act="buy" data-id="${s.id}" ${me.coins < price ? 'disabled' : ''}>Buy</button>`;
     return `<div class="skin-card">${onSale ? '<span class="tag">50% OFF</span>' : ''}
       <canvas data-skin-anim="${s.id}" width="144" height="144"></canvas>
       <b>${s.name}</b>
-      <span class="price fine">${owned ? 'Owned' : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
+      <span class="price fine">${owned ? 'Owned' : s.prize ? 'Weekly Tower prize' : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
       ${btn}</div>`;
   }).join('');
   return `
@@ -1321,6 +1339,7 @@ async function deleteAccount(password) {
   auth1 = sess;
   for (const code of me.groups) { try { await removeFromGroup(code); } catch {} }
   if (await usernameOwner(me.name).catch(() => null) === sess.uid) await deleteDoc(sess, 'usernames/' + me.name.toLowerCase());
+  await deleteDoc(sess, `tower/${towerWeek()}/runs/${sess.uid}`).catch(() => {});
   await deleteDoc(sess, 'users/' + sess.uid);
   await authPost('accounts:delete', { idToken: sess.idToken });
   logout1(); confirmDelete = false;
@@ -1394,13 +1413,14 @@ const myMatchName = () => (matchName && !isRude(matchName) ? matchName : me ? me
 const ownedSkins = () => (me ? me.skins : FREE_SKINS);
 
 function openSetup() {
-  matchName = ''; renaming = false;
+  matchName = ''; renaming = false; towerSetup = false;
   show('setup');
   renderSetup();
 }
 $('setupBack').onclick = () => { if (online) leaveOnline('You left the match.'); else show('app'); };
 
 function renderSetup() {
+  if (towerSetup) return renderTowerSetup();
   const w = weekInfo(), lo = myLoadout(), owned = ownedSkins();
   if (!owned.includes(lo.skin)) lo.skin = 'classic';
   $('setupTitle').textContent = online ? 'Choose your fighter' : isEvent ? 'Event match' : 'Single player';
@@ -1472,7 +1492,7 @@ function makePlayer(i, name, lo, isCpu) {
 function randomLoadout(strong = false) {
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   return {
-    skin: pick(SKINS).id,
+    skin: pick(SKINS.filter(s => !s.prize)).id,
     // Hard CPUs pick from the spikes and powers that win most often
     spike: pick(strong ? ['saw', 'lance', 'twin'] : Object.keys(SPIKES)),
     power: pick(strong ? ['shield', 'heal', 'rage'] : Object.keys(POWERS)),
@@ -1498,11 +1518,16 @@ function startMatch() {
 }
 $('startBtn').onclick = () => {
   sfx(520, 0.1, 'square', 0.04, 1.5);
-  if (online) setReady(); else startMatch();
+  if (towerSetup) startTower(); else if (online) setReady(); else startMatch();
 };
-$('againBtn').onclick = () => (mode === 'online' ? startMatchmaking() : startMatch());
+$('againBtn').onclick = () => (mode === 'tower' ? startTower() : mode === 'online' ? startMatchmaking() : startMatch());
 $('overMenu').onclick = () => show('app');
 $('quitBtn').onclick = () => {
+  if (tower && state === 'tower') {
+    // A long climb isn't thrown away by one stray tap
+    if (tower.clock > 15 && Date.now() - tower.quitAsk > 3000) { tower.quitAsk = Date.now(); return toast('Give up this climb? Press ✕ again to leave.'); }
+    return show('app');
+  }
   if (online) return leaveOnline('You left the match.');
   mods = { ...BASE_MODS }; resize(); show('app');
 };
@@ -1601,7 +1626,7 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT') return;
   const visible = id => !$(id).classList.contains('hidden');
   if (e.key === 'Escape') {
-    if (['place', 'aim', 'wait', 'countdown', 'play'].includes(state)) $('quitBtn').click();
+    if (['place', 'aim', 'wait', 'countdown', 'play', 'tower'].includes(state)) $('quitBtn').click();
     else if (visible('setup')) $('setupBack').click();
     else if (visible('mm') || visible('over')) (visible('mm') ? $('mmCancel') : $('overMenu')).click();
     return;
@@ -1611,6 +1636,7 @@ document.addEventListener('keydown', e => {
     else if (visible('over') && !$('againBtn').disabled) { e.preventDefault(); $('againBtn').click(); }
     return;
   }
+  if (state === 'tower') { towerKey(e, true); return; }
   if (state !== 'play') return;
   const k = e.key.toLowerCase();
   if (k === 'a' || k === ' ') { pressPower(); e.preventDefault(); }
@@ -2395,6 +2421,18 @@ function drawSkin(c, x, y, s, skin, t) {
     const g = c.createLinearGradient(l, top, l + s, top + s);
     for (let i = 0; i <= 4; i++) g.addColorStop(i / 4, `hsl(${(t * 120 + i * 70) % 360}, 90%, 60%)`);
     c.fillStyle = g; c.fillRect(l, top, s, s);
+  } else if (skin === 'champion') {
+    const g = c.createLinearGradient(l, top, l + s, top + s);
+    g.addColorStop(0, '#7c3aed'); g.addColorStop(1, '#1e0a3c');
+    c.fillStyle = g; c.fillRect(l, top, s, s);
+    const lw = Math.max(1, s * 0.08);
+    c.strokeStyle = '#facc15'; c.lineWidth = lw; c.strokeRect(l + lw / 2, top + lw / 2, s - lw, s - lw);
+    // A crown
+    const cw = s * 0.56, ch = s * 0.3, cl = x - cw / 2, cb = y + s * 0.14;
+    c.fillStyle = '#facc15'; c.shadowColor = '#facc15'; c.shadowBlur = s * (0.1 + 0.08 * Math.sin(t * 3));
+    c.beginPath(); c.moveTo(cl, cb); c.lineTo(cl, cb - ch); c.lineTo(cl + cw * 0.27, cb - ch * 0.5); c.lineTo(x, cb - ch * 1.25);
+    c.lineTo(cl + cw * 0.73, cb - ch * 0.5); c.lineTo(cl + cw, cb - ch); c.lineTo(cl + cw, cb); c.closePath(); c.fill();
+    c.fillRect(cl, cb + s * 0.05, cw, s * 0.08);
   } else { c.fillStyle = '#fff'; c.fillRect(l, top, s, s); }
   c.restore();
 }
@@ -2566,7 +2604,7 @@ function drawPreviews() {
     c.fillStyle = '#000'; c.fillRect(0, 0, size, size);
     const i = myIdx(), lo = myLoadout();
     const fake = { x: size / 2, y: size / 2, unit: 0.42 * size / 150, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
-    drawSpikes(c, fake);
+    if (!towerSetup) drawSpikes(c, fake);
     drawSkin(c, size / 2, size / 2, sizeOf(fake), lo.skin, clock);
   });
 }
@@ -2692,6 +2730,644 @@ function draw() {
   }
 }
 
+// ============================================================================
+// The Tower: climb a randomly built tower. Everyone gets the same tower for a week.
+// ============================================================================
+const TW = 420;                   // tower width in world units (y goes up)
+const T_CUBE = 26, T_PLAT_H = 14;
+const T_GRAV = 1500, T_JUMP = 560, T_BOUNCE = 840, T_RUN = 200;
+const T_STAGE_H = 1700;
+const TOWER_CLEAR_COINS = 500, TOWER_PRIZE_COINS = 2000;
+const TOWER_MIN_MS = 180000;      // no real climb is faster than this (the server checks it too)
+const WEEK_MS = 7 * 864e5, WEEK0 = Date.UTC(2024, 0, 1);   // tower weeks start Monday 00:00 UTC
+const towerWeek = (t = Date.now()) => Math.floor((t - WEEK0) / WEEK_MS);
+const towerWeekEnds = w => WEEK0 + (w + 1) * WEEK_MS;
+const TOWER_STAGES = [
+  { name: 'First Steps', color: '#4ade80', feats: [] },
+  { name: 'Narrow Path', color: '#2dd4bf', feats: [] },
+  { name: 'On the Move', color: '#38bdf8', feats: ['move'] },
+  { name: 'Crumble', color: '#60a5fa', feats: ['crumble', 'move'] },
+  { name: 'Bounce House', color: '#818cf8', feats: ['bounce', 'crumble'] },
+  { name: 'Spike Alley', color: '#a78bfa', feats: ['spikes', 'move'] },
+  { name: 'Elevators', color: '#c084fc', feats: ['lift', 'bounce'] },
+  { name: 'Black Ice', color: '#e879f9', feats: ['ice', 'spikes'] },
+  { name: 'Conveyors', color: '#f472b6', feats: ['belt', 'crumble'] },
+  { name: 'Blinkers', color: '#fb7185', feats: ['blink', 'move'] },
+  { name: 'Chaos', color: '#f87171', feats: ['move', 'crumble', 'spikes', 'bounce'] },
+  { name: 'Hot Steps', color: '#fb923c', feats: ['blink', 'ice', 'lift'] },
+  { name: 'Storm', color: '#fbbf24', feats: ['belt', 'spikes', 'move', 'blink'] },
+  { name: 'Last Stand', color: '#facc15', feats: ['crumble', 'lift', 'ice', 'bounce', 'spikes'] },
+  { name: 'Summit', color: '#fde68a', feats: ['move', 'crumble', 'spikes', 'blink', 'ice', 'belt', 'lift', 'bounce'] },
+];
+const lerp = (a, b, t) => a + (b - a) * t;
+const approach = (v, to, step) => (v < to ? Math.min(to, v + step) : Math.max(to, v - step));
+const fmtTime = ms => { const ts = Math.floor(ms / 100), m = Math.floor(ts / 600); return `${m}:${((ts % 600) / 10).toFixed(1).padStart(4, '0')}`; };
+
+// Time in the air before landing dy above the take-off point (0 if that's too high)
+function tAir(dy, v = T_JUMP) {
+  const disc = v * v - 2 * T_GRAV * dy;
+  return disc < 0 ? 0 : (v + Math.sqrt(disc)) / T_GRAV;
+}
+
+// Builds the week's tower. Every platform can be reached from the one before it,
+// and later stages use smaller platforms, longer jumps and more tricks.
+function buildTower(week) {
+  const rnd = seeded('tower-' + week), R = (a, b) => a + (b - a) * rnd();
+  const last = TOWER_STAGES.length - 1;
+  const plats = [], bounds = [-Infinity];
+  const add = o => { const p = { h: T_PLAT_H, dx: 0, safe: [0, o.w], ...o }; p.x0 = p.x; p.y0 = p.y; p.py = p.y; plats.push(p); return p; };
+  let prev = add({ type: 'floor', x: 0, y: 0, w: TW, stage: 0 });
+  let dir = rnd() < 0.5 ? 1 : -1;
+
+  function place(type, s) {
+    const d = s / last;
+    const v = prev.type === 'bounce' ? T_BOUNCE : T_JUMP;
+    const dy = v === T_BOUNCE ? R(120, 150 + 50 * d) : R(lerp(40, 62, d), lerp(60, 86, d));
+    let w = lerp(120, 46, d) * R(0.85, 1.15);
+    if (type === 'ice') w *= 1.35;
+    if (type === 'belt') w *= 1.15;
+    if (type === 'bounce') w = 48;
+    if (type === 'ledge') w = 170;
+    if (type === 'summit') w = 130;
+    w = Math.max(36, Math.round(w));
+    const spikes = type === 'spikes' ? Math.round(R(28, 48)) : 0;
+    let k = Math.min(0.85, lerp(0.32, 0.8, d) * R(0.8, 1.12));
+    if (type === 'ledge' || type === 'summit') k *= 0.5;
+    const gap = T_RUN * tAir(dy, v) * k;
+    if (rnd() < 0.3) dir = -dir;
+    const pL = prev.x + prev.safe[0], pR = prev.x + prev.safe[1];
+    // Spikes go on the far side, so you land on the safe part
+    const at = dd => {
+      const safe = spikes ? (dd > 0 ? [0, w] : [spikes, spikes + w]) : [0, w];
+      return { safe, x: dd > 0 ? pR + gap - safe[0] : pL - gap - safe[1] };
+    };
+    const total = w + spikes, lo = 6, hi = TW - 6 - total;
+    let o = at(dir);
+    if (prev.type === 'floor') o = { safe: at(1).safe, x: R(lo, hi) };
+    else if (o.x < lo || o.x > hi) { dir = -dir; o = at(dir); }
+    o.x = Math.max(lo, Math.min(hi, o.x));
+    const p = { type, x: o.x, y: prev.y + dy, w: total, safe: o.safe, stage: s };
+    if (spikes) p.spike = dir > 0 ? [w, total] : [0, spikes];
+    if (type === 'move') {
+      p.amp = Math.min(R(30, 65), p.x - lo, hi - p.x);
+      if (p.amp < 14) p.type = 'solid';
+      p.spd = Math.PI * 2 / R(2.6, 4.2); p.ph = R(0, Math.PI * 2);
+    }
+    if (type === 'lift') { p.amp = R(40, 70); p.spd = Math.PI * 2 / R(2.8, 4); p.ph = R(0, Math.PI * 2); }
+    if (type === 'blink') { p.per = R(2.4, 3.2); p.on = p.per * R(0.55, 0.7); p.ph = R(0, p.per); }
+    if (type === 'belt') p.belt = (rnd() < 0.5 ? -1 : 1) * R(55, 90);
+    prev = add(p);
+    return prev;
+  }
+
+  for (let s = 0; s <= last; s++) {
+    const st = TOWER_STAGES[s], top = (s + 1) * T_STAGE_H;
+    if (s > 0) { place('ledge', s).label = true; bounds.push(prev.y - 20); }
+    for (let n = 0; prev.y < top - 110; n++) {
+      let type = 'solid';
+      if (st.feats.length && (n === 0 || rnd() < lerp(0.4, 0.8, s / last))) type = n === 0 ? st.feats[0] : st.feats[Math.floor(rnd() * st.feats.length)];
+      if (type === 'bounce' && prev.type === 'bounce') type = 'solid';
+      place(type, s);
+    }
+  }
+  place('summit', last);
+  return { plats, bounds, top: prev.y };
+}
+
+let tower = null;            // the climb in progress
+let towerSetup = false;      // the setup screen is showing the Tower
+let towerLbCache = null;
+const towerPtrs = new Map(); // touch pointers: L, R or J
+
+function openTower() {
+  towerSetup = true; matchName = ''; renaming = false;
+  show('setup');
+  renderTowerSetup();
+}
+function renderTowerSetup() {
+  const lo = myLoadout(), owned = ownedSkins(), week = towerWeek();
+  if (!owned.includes(lo.skin)) lo.skin = 'classic';
+  $('setupTitle').textContent = 'The Tower';
+  $('setupTop').innerHTML = `<span class="tower-flag">This week's tower · a new one in <span class="timer" data-until="${towerWeekEnds(week)}"></span></span>`;
+  const skins = SKINS.filter(x => owned.includes(x.id)).map(x =>
+    `<button class="tile ${lo.skin === x.id ? 'on' : ''}" data-kind="skin" data-id="${x.id}"><canvas width="72" height="72" data-skin="${x.id}"></canvas>${x.name}</button>`).join('');
+  const cleared = me && me.tower.week === week && me.tower.cleared;
+  $('setupBody').innerHTML = `<div class="setup-left"><canvas class="big-preview" id="bigPreview"></canvas>
+    <div class="tower-info">
+      <p><b>Climb ${TOWER_STAGES.length} stages to the top.</b> There are no checkpoints: if you fall, you fall. Every stage is harder than the last.</p>
+      <p class="fine">${coarse ? 'Hold ◀ ▶ to move and tap anywhere else to jump.' : 'Move with ← → or A / D. Jump with Space, ↑ or W.'}</p>
+      <p class="fine">${cleared ? 'You already climbed it this week. Climb again to beat your time.' : `First climb this week: ${coinHtml(TOWER_CLEAR_COINS)}`}<br>
+        Fastest climb of the week wins ${coinHtml(TOWER_PRIZE_COINS)} and the <b>Champion</b> skin.</p>
+      <p class="fine desk-only">Press <b>Enter</b> to start.</p>
+    </div></div>
+    <div class="setup-right"><div><div class="section-label">Your cube</div><div class="picker">${skins}</div></div>
+    <div><div class="section-label">Fastest this week</div><div id="towerLb" class="lb">${me ? '<p class="fine">Loading…</p>'
+      : '<p class="fine">Log in to save your time and join the weekly tournament.</p>'}</div></div></div>`;
+  drawStaticSkins($('setupBody'));
+  const go = $('startBtn');
+  go.textContent = 'Start climb'; go.disabled = false;
+  $('setupBack').textContent = 'Back';
+  tickTimers();
+  if (me) loadTowerLb($('towerLb'), 5);
+}
+
+function startTower() {
+  const week = towerWeek(), built = buildTower(week);
+  const floor = built.plats[0];
+  tower = {
+    week, ...built, cam: -200, movers: built.plats.filter(p => p.type === 'move' || p.type === 'lift'),
+    timed: built.plats.filter(p => p.type === 'crumble'), spiky: built.plats.filter(p => p.spike),
+    p: { x: TW / 2, y: 0, vx: 0, vy: 0, on: floor, coyote: 0, buffer: 0, stun: 0, squash: 0, skin: myLoadout().skin },
+    keys: { L: false, R: false, J: false }, in: { L: false, R: false, J: false },
+    time: 0, clock: 0, started: false, done: false, sc: 1, maxY: 0, topStage: 0,
+    banner: null, parts: [], hurt: 0, quitAsk: 0, ranked: false,
+  };
+  const t = tower;
+  t.runReady = me && !needsUsername
+    ? startTowerRun(week).then(() => (t.ranked = true), () => { if (tower === t) toast("Couldn't save the start of this climb, so it won't count for the tournament."); return false; })
+    : Promise.resolve(false);
+  mode = 'tower'; state = 'tower';
+  towerPtrs.clear();
+  native({ type: 'awake', on: true });
+  screens.forEach(s => $(s).classList.add('hidden'));
+  $('quitBtn').classList.remove('hidden');
+  updateHint();
+}
+
+const towerSolid = (t, pl) => !pl.gone && (pl.type !== 'blink' || (t.time + pl.ph) % pl.per < pl.on);
+function towerJump() { if (tower) { tower.p.buffer = 0.12; tower.started = true; } }
+
+function towerUpdate(dt) {
+  const t = tower;
+  clock += dt;
+  if (state === 'tower' && t.started && !t.done) t.clock += dt;
+  const held = [...towerPtrs.values()];
+  t.in = state === 'tower'
+    ? { L: t.keys.L || held.includes('L'), R: t.keys.R || held.includes('R'), J: t.keys.J || held.includes('J') }
+    : { L: false, R: false, J: false };
+  for (let i = 0; i < 4; i++) towerStep(t, dt / 4);
+  // On phones the floor starts above the ◀ ▶ buttons
+  const target = Math.max(-(H / t.sc) * (coarse ? 0.2 : 0.06), t.p.y - (H / t.sc) * 0.4);
+  t.cam += (target - t.cam) * Math.min(1, dt * 7);
+  t.p.squash += (0 - t.p.squash) * Math.min(1, dt * 12);
+  t.hurt = Math.max(0, t.hurt - dt);
+  if (t.banner) { t.banner.life -= dt; if (t.banner.life <= 0) t.banner = null; }
+  for (const q of t.parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy -= 900 * dt; q.life -= dt; }
+  t.parts = t.parts.filter(q => q.life > 0);
+}
+
+function towerDust(t, x, y, color, n, up = 120) {
+  for (let i = 0; i < n && t.parts.length < 200; i++) {
+    t.parts.push({ x, y, vx: (Math.random() - 0.5) * 260, vy: Math.random() * up, life: 0.3 + Math.random() * 0.3, color });
+  }
+}
+
+// One physics step for the climber (also used by the tests with a made-up tower)
+function towerStep(t, dt) {
+  t.time += dt;
+  for (const pl of t.movers) {
+    const ox = pl.x, oy = pl.y;
+    if (pl.type === 'move') pl.x = pl.x0 + pl.amp * Math.sin(t.time * pl.spd + pl.ph);
+    else pl.y = pl.y0 - pl.amp * (0.5 - 0.5 * Math.cos(t.time * pl.spd + pl.ph));
+    pl.dx = pl.x - ox; pl.py = oy;
+  }
+  for (const pl of t.timed) {
+    if (pl.cr > 0) { pl.cr -= dt; if (pl.cr <= 0) { pl.cr = 0; pl.gone = 2.6; } }
+    else if (pl.gone > 0) { pl.gone -= dt; if (pl.gone <= 0) pl.gone = 0; }
+  }
+  const p = t.p, hw = T_CUBE / 2;
+  p.stun = Math.max(0, p.stun - dt);
+  const dir = p.stun > 0 ? 0 : (t.in.R ? 1 : 0) - (t.in.L ? 1 : 0);
+  if (dir) t.started = true;
+  const g = p.on, ice = g && g.type === 'ice';
+  const acc = g ? (ice ? 520 : dir ? 2600 : 3400) : dir ? 1900 : 500;
+  p.vx = approach(p.vx, dir * T_RUN, acc * dt);
+  p.buffer -= dt;
+  p.coyote = g ? 0.09 : p.coyote - dt;
+  if ((p.buffer > 0 || (t.in.J && g)) && p.coyote > 0 && p.stun <= 0) {
+    p.vy = T_JUMP; p.on = null; p.coyote = 0; p.buffer = 0; p.squash = -0.22;
+    t.started = true;
+    sfx(520, 0.05, 'square', 0.025, 1.4);
+  }
+  if (p.on) p.x += p.on.dx + (p.on.belt || 0) * dt;
+  const oy = p.y;
+  p.x += p.vx * dt;
+  if (!p.on) { p.vy = Math.max(p.vy - T_GRAV * dt, -1100); p.y += p.vy * dt; }
+  if (p.x < hw) { p.x = hw; p.vx = Math.max(0, p.vx); }
+  if (p.x > TW - hw) { p.x = TW - hw; p.vx = Math.min(0, p.vx); }
+  if (p.on) {
+    const pl = p.on;
+    if (!towerSolid(t, pl) || p.x + hw <= pl.x || p.x - hw >= pl.x + pl.w) { p.on = null; p.vy = 0; }
+    else p.y = pl.y;
+  }
+  if (!p.on && p.vy <= 0) {
+    for (const pl of t.plats) {
+      if (pl.y < p.y || pl.py > oy + 0.5) continue;
+      if (p.x + hw <= pl.x || p.x - hw >= pl.x + pl.w || !towerSolid(t, pl)) continue;
+      towerLand(t, pl, -p.vy);
+      break;
+    }
+  }
+  // Spikes knock you away
+  if (p.stun < 0.2) {
+    for (const pl of t.spiky) {
+      if (!towerSolid(t, pl)) continue;
+      const a = pl.x + pl.spike[0], b = pl.x + pl.spike[1];
+      if (p.x + hw - 3 > a && p.x - hw + 3 < b && p.y < pl.y + 11 && p.y + T_CUBE > pl.y) {
+        p.on = null; p.stun = 0.45; p.vy = 360; p.vx = (p.x < (a + b) / 2 ? -1 : 1) * 260;
+        t.hurt = 0.3;
+        towerDust(t, p.x, p.y + hw, '#ff4d5e', 12, 200);
+        sfx(120, 0.14, 'sawtooth', 0.05, 0.5); buzz('medium');
+        break;
+      }
+    }
+  }
+  if (p.y > t.maxY) t.maxY = p.y;
+  let stage = 0;
+  while (stage + 1 < t.bounds.length && p.y >= t.bounds[stage + 1]) stage++;
+  t.stage = stage;
+  if (stage > t.topStage) {
+    t.topStage = stage;
+    t.banner = { stage, life: 2.4 };
+    [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.12, 'square', 0.035), i * 90));
+    buzz('success');
+  }
+}
+
+function towerLand(t, pl, speed) {
+  const p = t.p;
+  p.on = pl; p.y = pl.y; p.vy = 0;
+  if (speed > 350) {
+    p.squash = Math.min(0.32, speed / 2600);
+    towerDust(t, p.x, p.y, 'rgba(255,255,255,.8)', Math.min(10, Math.round(speed / 100)));
+    if (speed > 700) buzz('light');
+  }
+  if (pl.type === 'bounce') {
+    p.on = null; p.vy = T_BOUNCE; pl.boing = t.time;
+    sfx(300, 0.15, 'square', 0.04, 2.5); buzz('light');
+  }
+  if (pl.type === 'crumble' && !pl.cr && !pl.gone) { pl.cr = 0.55; sfx(180, 0.08, 'triangle', 0.03); }
+  if (pl.type === 'summit' && t === tower) finishTower();
+}
+
+function finishTower() {
+  const t = tower;
+  if (t.done) return;
+  t.done = true; state = 'towerDone';
+  const ms = Math.round(t.clock * 1000);
+  for (let i = 0; i < 4; i++) towerDust(t, t.p.x, t.p.y + 20, TOWER_STAGES[i * 4 % TOWER_STAGES.length].color, 30, 600);
+  [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => sfx(f, 0.18, 'square', 0.04), i * 120));
+  buzz('success');
+  native({ type: 'awake', on: false });
+  $('quitBtn').classList.add('hidden');
+  setTimeout(() => { if (tower === t) screens.forEach(x => $(x).classList.toggle('hidden', x !== 'over')); }, 1600);
+  showTowerResult(t, ms);
+}
+
+async function showTowerResult(t, ms) {
+  const text = $('winText');
+  text.textContent = 'You reached the top!'; text.style.color = '#facc15';
+  $('againBtn').textContent = 'Climb again';
+  const results = $('results'), lines = [`<div class="tower-time">${fmtTime(ms)}</div>`];
+  if (!me) {
+    lines.push(`<div class="line"><b>Log in</b> to save your time, get ${coinHtml(TOWER_CLEAR_COINS)} for your first climb each week and join the weekly tournament.</div>`);
+    results.innerHTML = lines.join('');
+    return;
+  }
+  results.innerHTML = lines.join('') + '<div class="fine">Saving…</div>';
+  $('againBtn').disabled = true;
+  try {
+    const r = await saveTowerRun(t, ms);
+    if (r.newBest) lines.push('<div class="line"><b class="up">New best time!</b></div>');
+    else if (r.best < ms) lines.push(`<div class="line">Your best this week: <b>${fmtTime(r.best)}</b></div>`);
+    if (r.coins) lines.push(`<div class="line"><span class="up">+${r.coins}</span> ${coinHtml('')} coins for your first climb this week</div>`);
+    if (r.rank) lines.push(`<div class="line">You're <b>#${r.rank}</b> this week${r.rank === 1 ? '. Hold on to first place until the week ends to win the prize!' : ''}</div>`);
+  } catch (e) {
+    lines.push(`<div class="line down">${escapeHtml(e.message)}</div>`);
+  }
+  if (tower === t) results.innerHTML = lines.join('');
+  $('againBtn').disabled = false;
+}
+
+// ---------- Saving climbs ----------
+async function commitWithStart(sess, path, fields) {
+  await fs(sess, 'POST', ':commit', { body: { writes: [{
+    update: { name: docName(path), fields: toFields(fields) },
+    updateMask: { fieldPaths: Object.keys(fields) },
+    updateTransforms: [{ fieldPath: 'start', setToServerValue: 'REQUEST_TIME' }],
+  }] } });
+}
+async function setDoc(sess, path, data) { await fs(sess, 'PATCH', '/' + path, { body: { fields: toFields(data) } }); }
+// The server notes when the climb started, so nobody can save a time faster than the real one
+async function startTowerRun(week) {
+  await commitWithStart(auth1, `tower/${week}/runs/${auth1.uid}`, { name: me.name, skin: myLoadout().skin });
+}
+async function saveTowerRun(t, ms) {
+  const out = { coins: 0, newBest: false, best: ms, rank: 0 };
+  if (!(await t.runReady)) throw new GameError("This climb started without a connection, so it can't be saved.");
+  if (towerWeek() !== t.week) throw new GameError('The week ended during your climb, so this time does not count. A new tower is ready!');
+  if (ms < TOWER_MIN_MS) throw new GameError("That time is too fast to be real, so it wasn't saved.");
+  const path = `tower/${t.week}/runs/${auth1.uid}`;
+  const run = await getDoc(auth1, path);
+  const old = run && typeof run.best === 'number' ? run.best : null;
+  if (old === null || ms < old) {
+    await updateDoc(auth1, path, { best: ms });
+    out.newBest = old !== null;
+    const top = await getDoc(auth1, 'towerBest/' + t.week);
+    if (!top || ms < top.time) await setDoc(auth1, 'towerBest/' + t.week, { uid: auth1.uid, name: me.name, time: ms });
+  } else out.best = old;
+  await mutateUser(auth1, d => {
+    if (d.tower.week === t.week && d.tower.cleared) return;
+    d.tower = { ...d.tower, week: t.week, cleared: true };
+    d.coins += TOWER_CLEAR_COINS; out.coins = TOWER_CLEAR_COINS;
+  });
+  towerLbCache = null;
+  const rows = await towerTop(t.week, 50);
+  out.rank = rows.findIndex(r => r.id === auth1.uid) + 1;
+  return out;
+}
+async function towerTop(week, limit) {
+  const out = await fs(auth1, 'POST', `/tower/${week}:runQuery`, { body: { structuredQuery: {
+    from: [{ collectionId: 'runs' }], orderBy: [{ field: { fieldPath: 'best' }, direction: 'ASCENDING' }], limit,
+  } } });
+  return out.filter(r => r.document).map(r => ({ id: r.document.name.split('/').pop(), ...fromFields(r.document.fields) }));
+}
+function towerRows(rows) {
+  if (!rows.length) return '<p class="fine">Nobody has reached the top this week yet. Be the first!</p>';
+  return rows.map((r, i) => `<div class="lb-row ${auth1 && r.id === auth1.uid ? 'me' : ''}"><span class="rank">${i + 1}</span>
+    <div style="min-width:0"><div class="name">${escapeHtml(r.name || 'Player')}</div></div><b>${fmtTime(r.best)}</b></div>`).join('');
+}
+async function loadTowerLb(el, limit) {
+  if (!el || !me) return;
+  try {
+    const w = towerWeek();
+    if (!towerLbCache || towerLbCache.week !== w || Date.now() - towerLbCache.at > 60000) {
+      const [rows, champ] = await Promise.all([towerTop(w, 10), getDoc(auth1, 'towerBest/' + (w - 1)).catch(() => null)]);
+      towerLbCache = { week: w, at: Date.now(), rows, champ };
+    }
+    if (!document.contains(el)) return;
+    el.innerHTML = towerRows(towerLbCache.rows.slice(0, limit));
+    const c = towerLbCache.champ, last = $('towerLast');
+    if (last && c) last.innerHTML = `Last week's champion: <b>${escapeHtml(c.name)}</b> (${fmtTime(c.time)})`;
+  } catch (e) { if (document.contains(el)) el.innerHTML = `<p class="err">${escapeHtml(e.message)}</p>`; }
+}
+
+// The fastest climber of a finished week collects the prize the next time they open the game
+let checkingPrizes = false;
+async function checkTowerPrizes() {
+  if (!me || needsUsername || checkingPrizes) return;
+  checkingPrizes = true;
+  try {
+    const cur = towerWeek();
+    for (let w = Math.max(me.tower.prize + 1, cur - 4); w < cur; w++) {
+      const best = await getDoc(auth1, 'towerBest/' + w).catch(() => null);
+      if (!best || best.uid !== auth1.uid) continue;
+      await mutateUser(auth1, d => {
+        if (d.tower.prize >= w) throw new GameError('Already collected.');
+        d.tower = { ...d.tower, prize: w };
+        d.coins += TOWER_PRIZE_COINS;
+        if (!d.skins.includes('champion')) d.skins.push('champion');
+      });
+      sfx(880, 0.2, 'square', 0.04, 1.5); buzz('success');
+      toast(`You won the weekly Tower tournament! +${TOWER_PRIZE_COINS} coins and the Champion skin`);
+      if (!$('app').classList.contains('hidden')) renderApp();
+    }
+  } catch {} finally { checkingPrizes = false; }
+}
+
+function towerCard() {
+  const w = towerWeek();
+  return `<div class="card tower-card">
+    <div class="row between"><span class="eyebrow tower-eyebrow">Tower tournament</span><span class="fine">Ends in <span class="timer" data-until="${towerWeekEnds(w)}"></span></span></div>
+    <h2>The Tower</h2>
+    <p>Climb this week's tower as fast as you can. The fastest climb when the week ends wins ${coinHtml(TOWER_PRIZE_COINS)} and the <b>Champion</b> skin.</p>
+    <div id="towerLb" class="lb">${me ? '<p class="fine">Loading…</p>' : '<p class="fine"><button class="link" data-act="goto" data-to="profile">Log in</button> to see the leaderboard and join.</p>'}</div>
+    <p class="fine" id="towerLast"></p>
+    <button class="tower-btn" data-act="tower">Climb the Tower</button></div>`;
+}
+
+// ---------- Tower controls ----------
+const T_KEYS = { arrowleft: 'L', a: 'L', arrowright: 'R', d: 'R', ' ': 'J', arrowup: 'J', w: 'J' };
+function towerKey(e, down) {
+  const k = T_KEYS[e.key.toLowerCase()];
+  if (!k || !tower) return false;
+  e.preventDefault();
+  if (k === 'J' && down && !e.repeat) towerJump();
+  tower.keys[k] = down;
+  return true;
+}
+document.addEventListener('keyup', e => { if (tower) towerKey(e, false); });
+window.addEventListener('blur', () => { if (tower) tower.keys = { L: false, R: false, J: false }; towerPtrs.clear(); });
+function towerButtons() {
+  const r = Math.max(34, Math.min(46, W * 0.1)), y = H - 22 - r;
+  return [{ k: 'L', x: 18 + r, y, r }, { k: 'R', x: 18 + 3 * r + 16, y, r }];
+}
+const towerBtnAt = (x, y) => (coarse ? towerButtons().find(b => Math.hypot(x - b.x, y - b.y) < b.r + 12)?.k : null);
+canvas.addEventListener('pointerdown', e => {
+  if (state !== 'tower' || !tower) return;
+  const k = towerBtnAt(e.clientX, e.clientY);
+  towerPtrs.set(e.pointerId, k || 'J');
+  if (!k) towerJump(); else tower.started = true;
+});
+canvas.addEventListener('pointermove', e => {
+  const k = towerPtrs.get(e.pointerId);
+  if (k === 'L' || k === 'R') { const n = towerBtnAt(e.clientX, e.clientY); if (n) towerPtrs.set(e.pointerId, n); }
+});
+['pointerup', 'pointercancel'].forEach(ev => canvas.addEventListener(ev, e => towerPtrs.delete(e.pointerId)));
+
+// ---------- Drawing the tower ----------
+function towerDraw() {
+  const t = tower, p = t.p;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const sc = t.sc = Math.min(W / (TW + 50), H / 640);
+  const ox = (W - TW * sc) / 2, cam = t.cam, top = cam + H / sc;
+  const X = x => ox + x * sc, Y = y => H - (y - cam) * sc;
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  // Stage colors: a tinted inside, a faint glow outside and colored walls
+  for (let s = 0; s < TOWER_STAGES.length; s++) {
+    const y0 = s ? t.bounds[s] : -200, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top + 2000;
+    if (y1 < cam || y0 > top) continue;
+    const c = TOWER_STAGES[s].color, a = Y(y1), b = Y(y0);
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.04; ctx.fillRect(0, a, W, b - a);
+    ctx.globalAlpha = 0.08; ctx.fillRect(X(0), a, TW * sc, b - a);
+    ctx.globalAlpha = 0.9; ctx.fillRect(X(0) - 8 * sc, a, 8 * sc, b - a); ctx.fillRect(X(TW), a, 8 * sc, b - a);
+    ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1;
+  for (let y = Math.ceil(cam / 100) * 100; y < Math.min(top, t.top + 60); y += 100) { ctx.beginPath(); ctx.moveTo(X(0), Y(y)); ctx.lineTo(X(TW), Y(y)); ctx.stroke(); }
+  // Your highest point on this climb
+  if (t.maxY > 300 && t.maxY - p.y > 150) {
+    const my = Y(t.maxY);
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.beginPath(); ctx.moveTo(X(0) - 8 * sc, my - 6); ctx.lineTo(X(0) + 4, my); ctx.lineTo(X(0) - 8 * sc, my + 6); ctx.fill();
+    ctx.font = '700 11px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('your best', X(0) + 8, my);
+  }
+  for (const pl of t.plats) if (pl.label && pl.y > cam - 200 && pl.y < top + 40) drawStageLabel(pl, Y(pl.y), sc);
+  for (const pl of t.plats) {
+    if (pl.y < cam - 40 || pl.y - pl.h > top + 40) continue;
+    drawPlat(t, pl, X(pl.x), Y(pl.y), pl.w * sc, pl.h * sc, sc);
+  }
+  // Particles
+  for (const q of t.parts) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, q.life * 3)); ctx.fillStyle = q.color;
+    ctx.fillRect(X(q.x) - 2, Y(q.y) - 2, 4, 4);
+  }
+  ctx.globalAlpha = 1;
+  // The climber, squashing on landings and stretching on jumps
+  const s = T_CUBE * sc, cx = X(p.x), by = Y(p.y);
+  ctx.save();
+  ctx.translate(cx, by); ctx.scale(1 + p.squash, 1 - p.squash);
+  if (p.stun > 0) ctx.rotate(Math.sin(t.time * 40) * 0.15);
+  drawSkin(ctx, 0, -s / 2, s, p.skin, clock);
+  if (t.hurt > 0) { ctx.fillStyle = `rgba(255,60,60,${t.hurt * 2})`; ctx.fillRect(-s / 2, -s, s, s); }
+  ctx.restore();
+  drawTowerHud(t);
+}
+
+function drawPlat(t, pl, x, y, w, h, sc) {
+  const col = TOWER_STAGES[pl.stage].color;
+  ctx.save();
+  let alpha = 1;
+  if (pl.type === 'blink') {
+    const ph = (t.time + pl.ph) % pl.per;
+    if (ph >= pl.on) {
+      ctx.strokeStyle = col; ctx.globalAlpha = 0.35; ctx.setLineDash([4, 4]); ctx.strokeRect(x, y, w, h);
+      ctx.restore(); return;
+    }
+    if (pl.on - ph < 0.45) alpha = Math.sin(ph * 40) > 0 ? 1 : 0.35;
+  }
+  if (pl.type === 'crumble') {
+    if (pl.gone) {
+      ctx.globalAlpha = Math.max(0, 0.25 - pl.gone * 0.1); ctx.strokeStyle = col; ctx.setLineDash([3, 5]); ctx.strokeRect(x, y, w, h);
+      ctx.restore(); return;
+    }
+    if (pl.cr > 0) x += (Math.random() - 0.5) * 4;
+  }
+  ctx.globalAlpha = alpha;
+  if (pl.type === 'floor') { ctx.fillStyle = '#1a1a22'; ctx.fillRect(x, y, w, 400); }
+  else if (pl.type === 'ice') ctx.fillStyle = '#cdefff';
+  else if (pl.type === 'bounce') ctx.fillStyle = '#ffd23f';
+  else if (pl.type === 'belt') ctx.fillStyle = '#2a2a35';
+  else if (pl.type === 'summit') ctx.fillStyle = '#facc15';
+  else ctx.fillStyle = col;
+  if (pl.type === 'bounce') {
+    const squish = Math.max(0, 1 - (t.time - (pl.boing ?? -9)) * 4) * 0.5;
+    ctx.fillRect(x, y + h * squish, w, h * (1 - squish));
+    ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) { ctx.moveTo(x + w * 0.2, y + h + i * 3 * sc + 2); ctx.lineTo(x + w * 0.8, y + h + i * 3 * sc + 2); }
+    ctx.stroke();
+  } else if (pl.type !== 'floor') ctx.fillRect(x, y, w, h);
+  // Top edge highlight
+  ctx.fillStyle = 'rgba(255,255,255,.35)'; ctx.fillRect(x, y, w, Math.max(1, 2 * sc));
+  if (pl.type === 'floor') { ctx.fillStyle = col; ctx.fillRect(x, y, w, 3); }
+  if (pl.type === 'crumble') {
+    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + w * 0.3, y); ctx.lineTo(x + w * 0.38, y + h * 0.6); ctx.lineTo(x + w * 0.32, y + h);
+    ctx.moveTo(x + w * 0.7, y); ctx.lineTo(x + w * 0.62, y + h * 0.5); ctx.lineTo(x + w * 0.7, y + h); ctx.stroke();
+  }
+  if (pl.type === 'belt') {
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    const step = 14 * sc, off = ((t.time * pl.belt * sc) % step + step) % step, d = Math.sign(pl.belt) * 4 * sc;
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    ctx.beginPath();
+    for (let i = -1; i < w / step + 1; i++) { const cx = x + i * step + off; ctx.moveTo(cx - d, y + h * 0.25); ctx.lineTo(cx, y + h / 2); ctx.lineTo(cx - d, y + h * 0.75); }
+    ctx.stroke();
+  }
+  if (pl.type === 'move' || pl.type === 'lift') {
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    const cx = x + w / 2, cy = y + h / 2, a = 3.5 * sc;
+    ctx.beginPath();
+    if (pl.type === 'move') { ctx.moveTo(cx - 6 * sc, cy); ctx.lineTo(cx - 6 * sc + a, cy - a); ctx.lineTo(cx - 6 * sc + a, cy + a); ctx.moveTo(cx + 6 * sc, cy); ctx.lineTo(cx + 6 * sc - a, cy - a); ctx.lineTo(cx + 6 * sc - a, cy + a); }
+    else { ctx.moveTo(cx, cy - a - 1); ctx.lineTo(cx - a, cy - 1); ctx.lineTo(cx + a, cy - 1); ctx.moveTo(cx, cy + a + 1); ctx.lineTo(cx - a, cy + 1); ctx.lineTo(cx + a, cy + 1); }
+    ctx.fill();
+  }
+  if (pl.spike) {
+    const a = x + pl.spike[0] * sc, b = x + pl.spike[1] * sc, n = Math.max(2, Math.round((b - a) / (9 * sc))), sw = (b - a) / n;
+    ctx.fillStyle = '#ff4d5e';
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) { ctx.moveTo(a + i * sw, y); ctx.lineTo(a + (i + 0.5) * sw, y - 11 * sc); ctx.lineTo(a + (i + 1) * sw, y); }
+    ctx.fill();
+  }
+  if (pl.type === 'summit') {
+    const fx = x + w / 2, fy = y;
+    ctx.fillStyle = '#ddd'; ctx.fillRect(fx - 1.5, fy - 70 * sc, 3, 70 * sc);
+    ctx.fillStyle = '#ff4d5e';
+    ctx.beginPath(); ctx.moveTo(fx + 1.5, fy - 70 * sc);
+    const wave = Math.sin(t.time * 4) * 3 * sc;
+    ctx.lineTo(fx + 34 * sc, fy - 60 * sc + wave); ctx.lineTo(fx + 1.5, fy - 48 * sc); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.font = `900 ${Math.round(16 * sc)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText('THE TOP', fx, fy - 76 * sc);
+  }
+  ctx.restore();
+}
+// Each stage's name, painted on the tower wall behind the platforms
+function drawStageLabel(pl, y, sc) {
+  const st = TOWER_STAGES[pl.stage];
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = st.color; ctx.globalAlpha = 0.3;
+  ctx.font = `900 ${Math.round(30 * sc)}px system-ui, sans-serif`;
+  ctx.fillText(`STAGE ${pl.stage + 1}`, W / 2, y - 70 * sc);
+  ctx.font = `700 ${Math.round(15 * sc)}px system-ui, sans-serif`;
+  ctx.fillText(st.name.toUpperCase(), W / 2, y - 50 * sc);
+  ctx.globalAlpha = 1;
+}
+
+function drawTowerHud(t) {
+  const topY = 12 + safeTop, st = TOWER_STAGES[t.stage || 0];
+  // A dark backing so the clock stays readable over the tower
+  const label = `Stage ${(t.stage || 0) + 1}/${TOWER_STAGES.length} · ${st.name}`;
+  ctx.font = '700 13px system-ui, sans-serif';
+  const bw = Math.max(118, ctx.measureText(label).width) + 20;
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.beginPath(); ctx.roundRect ? ctx.roundRect(6, topY - 6, bw, 58, 10) : ctx.rect(6, topY - 6, bw, 58); ctx.fill();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#fff'; ctx.font = '800 26px system-ui, sans-serif';
+  ctx.fillText(fmtTime(t.clock * 1000), 16, topY);
+  ctx.fillStyle = st.color; ctx.font = '700 13px system-ui, sans-serif';
+  ctx.fillText(label, 16, topY + 32);
+  // Progress up the tower, on the right edge
+  const bx = W - 16, b1 = topY + 8, b0 = H - (coarse ? 40 : 24), bh = b0 - b1;
+  const toBar = y => b0 - Math.max(0, Math.min(1, y / t.top)) * bh;
+  for (let s = 0; s < TOWER_STAGES.length; s++) {
+    const y0 = s ? t.bounds[s] : 0, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top;
+    ctx.fillStyle = TOWER_STAGES[s].color; ctx.globalAlpha = s <= t.topStage ? 0.9 : 0.25;
+    ctx.fillRect(bx - 3, toBar(y1), 6, toBar(y0) - toBar(y1) - 1);
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(bx - 7, toBar(t.maxY) - 1, 14, 2);
+  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(bx, toBar(t.p.y), 5, 0, Math.PI * 2); ctx.fill();
+  // New stage banner
+  if (t.banner) {
+    const b = TOWER_STAGES[t.banner.stage], a = Math.min(1, t.banner.life * 2, (2.4 - t.banner.life) * 6);
+    ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = b.color; ctx.font = '900 40px system-ui, sans-serif';
+    ctx.fillText(`STAGE ${t.banner.stage + 1}`, W / 2, H * 0.3);
+    ctx.fillStyle = '#fff'; ctx.font = '700 18px system-ui, sans-serif';
+    ctx.fillText(b.name, W / 2, H * 0.3 + 34);
+    ctx.globalAlpha = 1;
+  }
+  if (!t.started) {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.font = '700 16px system-ui, sans-serif';
+    ctx.fillText(coarse ? 'Tap to jump · hold ◀ ▶ to move' : '← → or A / D to move · Space to jump', W / 2, H * 0.3);
+    ctx.font = '600 13px system-ui, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.fillText('The clock starts when you move', W / 2, H * 0.3 + 26);
+  }
+  if (coarse && state === 'tower') {
+    for (const b of towerButtons()) {
+      const on = t.in[b.k];
+      ctx.fillStyle = on ? 'rgba(255,255,255,.35)' : 'rgba(255,255,255,.12)';
+      ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      const d = b.k === 'L' ? -1 : 1, a = b.r * 0.38;
+      ctx.beginPath(); ctx.moveTo(b.x + d * a, b.y); ctx.lineTo(b.x - d * a * 0.6, b.y - a); ctx.lineTo(b.x - d * a * 0.6, b.y + a); ctx.fill();
+    }
+  }
+}
+
 // Safe-area inset so the HP bars clear a phone's notch
 let safeTop = 0;
 (() => {
@@ -2706,6 +3382,7 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.033, (now - last) / 1000);
   last = now;
+  if (tower && (state === 'tower' || state === 'towerDone')) { towerUpdate(dt); towerDraw(); requestAnimationFrame(loop); return; }
   // Sub-step so fast cubes and spikes don't skip through each other
   for (let i = 0; i < 4; i++) update(dt / 4);
   if (online && state === 'play') { if (online.role === 'guest') guestTick(dt); else hostSend(); }
