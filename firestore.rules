@@ -74,8 +74,23 @@ service cloud.firestore {
         && request.time.toMillis() - a.start.toMillis() >= 150000;
     }
 
+    // Codes: codes/{CODE} = { skin, coins, left }, made in the Firebase console. Redeeming adds the code to
+    // the account's 'codes' list and lowers the code's 'left' count in the same write.
+    function newCode() {
+      return request.resource.data.codes[request.resource.data.codes.size() - 1];
+    }
+    function codeDoc() {
+      return get(/databases/$(database)/documents/codes/$(newCode())).data;
+    }
+    function redeem() {
+      return request.resource.data.get('codes', []).size() == resource.data.get('codes', []).size() + 1
+        && request.resource.data.codes.hasAll(resource.data.get('codes', []))
+        && !resource.data.get('codes', []).hasAny([newCode()])
+        && getAfter(/databases/$(database)/documents/codes/$(newCode())).data.left == codeDoc().left - 1;
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
@@ -87,7 +102,8 @@ service cloud.firestore {
         && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int
         && gb(d).days is list && gb(d).days.size() <= 8
         && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8
-        && al(d) is map;
+        && al(d) is map
+        && d.get('codes', []) is list && d.get('codes', []).size() <= 50;
     }
 
     // Player accounts. Anyone signed in can read them (for leaderboards); only the owner can change theirs.
@@ -102,7 +118,7 @@ service cloud.firestore {
         && request.resource.data.skins.size() == 2
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
         && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
-        && !('alvin' in request.resource.data);
+        && !('alvin' in request.resource.data) && !('codes' in request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -117,6 +133,8 @@ service cloud.firestore {
             || prizeClaim(tw(resource.data), tw(request.resource.data)))
         // Gambler progress only grows by one boss win a day
         && (gb(request.resource.data) == gb(resource.data) || bossWin(gb(resource.data), gb(request.resource.data)))
+        // Codes only change by redeeming one
+        && (request.resource.data.get('codes', []) == resource.data.get('codes', []) || redeem())
         // The Secret Alvin Tower: a climb starts, or the one prize is collected
         && (al(request.resource.data) == al(resource.data)
             || alvinStart(al(resource.data), al(request.resource.data))
@@ -126,14 +144,23 @@ service cloud.firestore {
         && (request.resource.data.coins - resource.data.coins <= 300
             || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
             || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data)))
-            || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data))))
-        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler and Awakened Gambler
+            || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data)))
+            || (request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
+                && request.resource.data.coins - resource.data.coins <= codeDoc().get('coins', 0)))
+        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler, Awakened Gambler and
+        // Sigma (a code). A code can also give the skin it names.
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && !('champion' in request.resource.data.skins && !('champion' in resource.data.skins))
                 && !('gambler' in request.resource.data.skins && !('gambler' in resource.data.skins))
                 && !('gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins))
+                && !('sigma' in request.resource.data.skins && !('sigma' in resource.data.skins))
                 && resource.data.coins - request.resource.data.coins >= 50)
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
+                && codeDoc().get('skin', '') in request.resource.data.skins
+                && !(codeDoc().get('skin', '') in resource.data.skins))
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
                 && 'gambler' in request.resource.data.skins && !('gambler' in resource.data.skins)
@@ -186,6 +213,17 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() <= 16
         && request.resource.data.time == get(/databases/$(database)/documents/tower/$(week)/runs/$(request.auth.uid)).data.best
         && (resource == null || request.resource.data.time < resource.data.time);
+    }
+
+    // Codes: anyone signed in can look one up; using one only lowers its 'left' count by one, together with
+    // adding it to your account. Only you (in the Firebase console) can make or change codes.
+    match /codes/{code} {
+      allow read: if signedIn();
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['left'])
+        && resource.data.left > 0 && request.resource.data.left == resource.data.left - 1
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('codes', []).hasAny([code])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('codes', []).hasAny([code]);
     }
 
     // Usernames are unique: the doc id is the lowercase username, and it records who owns it.

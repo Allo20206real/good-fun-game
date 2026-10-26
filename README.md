@@ -72,6 +72,18 @@ A new tower is built every Monday (00:00 UTC), the same one for everyone. A clim
 
 Make a group and share its 6-character code. Friends join from the Groups tab, and the group shows a leaderboard of everyone's score. There's also a **Top players** list across everyone.
 
+## Codes
+
+Players can type codes on the Profile tab. You make codes in the Firebase console: in Firestore, add a document to the `codes` collection whose ID is the code in capital letters, with any of these fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `skin` | string | a skin to unlock, e.g. `sigma`, `moai`, `rainbow` |
+| `coins` | number | coins to give |
+| `left` | number | how many more players can use it |
+
+Each account can use a code once, and it stops working when `left` reaches 0.
+
 ## Accounts and score
 
 Create an account with just an email and password on the **Profile** tab, then log in with the same details on any phone or computer. Forgot your password? Use "Forgot your password?" to get a reset email. You can delete your account any time from the Profile tab.
