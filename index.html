@@ -620,10 +620,11 @@ const POWERS = {
 };
 // How the CPU plays. react: seconds before it presses its power; skill: how often it spots a good moment;
 // counter: how often it answers when you use your power; random: presses per second for no reason.
+// score: leaderboard points for a win, so one Hard win beats three Easy wins.
 const DIFFICULTIES = {
-  easy:   { name: 'Easy', desc: 'Starts with 80 HP and is slow to react.', hp: 80, react: 0.9, skill: 0.3, counter: 0.15, random: 0.08, coins: 10 },
-  normal: { name: 'Normal', desc: 'A fair fight: plays like a regular player.', hp: 100, react: 0.55, skill: 0.55, counter: 0.35, random: 0.05, coins: 20 },
-  hard:   { name: 'Hard', desc: 'Picks a strong spike and power, reacts fast and answers your power.', hp: 100, strong: true, react: 0.3, skill: 0.85, counter: 0.65, random: 0.02, coins: 35 },
+  easy:   { name: 'Easy', desc: 'Starts with 80 HP and is slow to react.', hp: 80, react: 0.9, skill: 0.3, counter: 0.15, random: 0.08, coins: 10, score: 3 },
+  normal: { name: 'Normal', desc: 'A fair fight: plays like a regular player.', hp: 100, react: 0.55, skill: 0.55, counter: 0.35, random: 0.05, coins: 20, score: 6 },
+  hard:   { name: 'Hard', desc: 'Picks a strong spike and power, reacts fast and answers your power.', hp: 100, strong: true, react: 0.3, skill: 0.85, counter: 0.65, random: 0.02, coins: 35, score: 10 },
 };
 
 // Weekly events rotate every Monday
@@ -1454,7 +1455,7 @@ function renderSetup() {
   const spikes = Object.entries(SPIKES).map(([id, x]) => tile('spike', id, lo.spike === id, `${x.name}<small>${SPIKE_SHORT[id]}</small>`)).join('');
   const powers = Object.entries(POWERS).map(([id, x]) => tile('power', id, lo.power === id, `${x.name}<small>${POWER_SHORT[id]}</small>`)).join('');
   const cpu = online ? '' : section('CPU difficulty', Object.entries(DIFFICULTIES).map(([id, d]) =>
-    tile('difficulty', id, difficulty === id, `${d.name}<small>Win: ${d.coins}${isEvent ? ' +50%' : ''} coins</small>`)).join(''));
+    tile('difficulty', id, difficulty === id, `${d.name}<small>Win: ${d.coins}${isEvent ? ' +50%' : ''} coins · +${d.score} score</small>`)).join(''));
   $('setupBody').innerHTML = `<div class="setup-left"><canvas class="big-preview" id="bigPreview"></canvas>${nameRow}
     <p class="fine desk-only">Press <b>Enter</b> to ${online ? 'get ready' : 'start'}.</p></div>
     <div class="setup-right">${section('Skin', skins)}${owned.length < SKINS.length ? '<p class="fine" style="margin-top:-12px">Get more skins in the Shop.</p>' : ''}
@@ -2346,7 +2347,15 @@ async function showResult(winner, mine, oppName) {
       await mutateUser(auth1, d => {
         rollDaily(d);
         d.coins += coins;
-        if (mode === '1p') { if (won) d.wins1p++; else if (winner) d.losses1p++; }
+        if (mode === '1p') {
+          if (won) {
+            // Beating the CPU adds score too, more for harder levels (losing takes none away)
+            d.wins1p++;
+            const old = d.score;
+            d.score += DIFFICULTIES[difficulty].score;
+            scoreLine = `<div class="line">Score ${old} → <b>${d.score}</b> <span class="up">(+${d.score - old} for beating ${DIFFICULTIES[difficulty].name})</span></div>`;
+          } else if (winner) d.losses1p++;
+        }
         else if (winner) {
           // Winner gains the HP they have left; the loser loses the same amount
           const old = d.score;
