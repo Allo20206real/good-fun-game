@@ -24,11 +24,11 @@ service cloud.firestore {
       return d.get('tower', {'week': -1, 'cleared': false, 'prize': -1});
     }
 
-    // First climb of the week: worth up to 500 coins, once, after a saved time
+    // A climb of 5:00 or less: worth up to 500 coins, once a week, after the time is saved
     function firstClear(a, b) {
       return b.week == curWeek() && b.cleared == true && b.prize == a.prize
         && !(a.week == b.week && a.cleared == true)
-        && 'best' in get(/databases/$(database)/documents/tower/$(string(curWeek()))/runs/$(request.auth.uid)).data;
+        && get(/databases/$(database)/documents/tower/$(string(curWeek()))/runs/$(request.auth.uid)).data.get('best', 1000000000) <= 300000;
     }
 
     // The fastest climber of a finished week collects 2000 coins and the Champion skin, once per week
@@ -73,7 +73,7 @@ service cloud.firestore {
         && (tw(request.resource.data) == tw(resource.data)
             || firstClear(tw(resource.data), tw(request.resource.data))
             || prizeClaim(tw(resource.data), tw(request.resource.data)))
-        // No single save can add more than 300 coins (500 for a first Tower climb, 2000 for a Tower prize)
+        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 2000 for a Tower prize)
         && (request.resource.data.coins - resource.data.coins <= 300
             || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
             || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data))))
@@ -105,10 +105,10 @@ service cloud.firestore {
             && ((resource == null && !('best' in request.resource.data))
                 || (resource != null && request.resource.data.get('best', -1) == resource.data.get('best', -1))))
           ||
-          // Finishing: a faster time that fits in the real time since the climb started (and at least 3 minutes)
+          // Finishing: a faster time that fits in the real time since the climb started (and at least 2 minutes)
           (resource != null && request.resource.data.start == resource.data.start
             && request.resource.data.name == resource.data.name
-            && request.resource.data.best is int && request.resource.data.best >= 180000
+            && request.resource.data.best is int && request.resource.data.best >= 120000
             && request.resource.data.best < resource.data.get('best', 1000000000)
             && request.resource.data.best <= request.time.toMillis() - resource.data.start.toMillis() + 5000)
         );

@@ -9,7 +9,7 @@ The app has five tabs: **Play**, **Events**, **Shop**, **Groups** and **Profile*
 - **Single player**: play against a CPU cube (Easy, Normal or Hard). The CPU picks a random skin, spike and power each match.
 - **Two players**: two people on the same device. Player 2 can sign in to their own account on the setup screen.
 - **Event match**: single player with this week's special rules and 50% more coins.
-- **The Tower**: a 2D climb up a tower with 15 stages, each a new color and harder than the last (moving, crumbling, blinking, icy and spiked platforms, bounce pads, elevators and conveyor belts). No powers and no checkpoints. Move with ◀ ▶ (arrow keys or A/D on a computer) and tap to jump (Space, ↑ or W).
+- **The Tower**: a 2D climb up a tower with 15 stages and 100 HP, each a new color and harder than the last (moving, crumbling, blinking, icy and spiked platforms, bounce pads, elevators and conveyor belts). No powers and no checkpoints. Move with ◀ ▶ (arrow keys or A/D on a computer) and tap to jump (Space, ↑ or W).
 
 Each player taps where their cube starts, then drags or taps to pick the bounce direction. After a 3-2-1 countdown the cubes go, and they speed up over time.
 
@@ -63,7 +63,7 @@ Each event also puts one skin on sale at half price.
 
 ### Tower tournament
 
-A new tower is built every Monday (00:00 UTC), the same one for everyone. The first climb each week pays 500 coins. After that, only a faster time counts. The fastest climb when the week ends wins 2000 coins and the Champion skin, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
+A new tower is built every Monday (00:00 UTC), the same one for everyone. A climb of 5:00 or less pays 500 coins, once a week. Only a faster time replaces your best. You have 100 HP; every spike takes 10 and it never heals, so at 0 HP the climb is over. The fastest climb when the week ends wins 2000 coins and the Champion skin, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
 
 ## Groups
 

@@ -2736,27 +2736,29 @@ function draw() {
 const TW = 420;                   // tower width in world units (y goes up)
 const T_CUBE = 26, T_PLAT_H = 14;
 const T_GRAV = 1500, T_JUMP = 560, T_BOUNCE = 840, T_RUN = 200;
-const T_STAGE_H = 1700;
+const T_STAGE_H = 1250;
 const TOWER_CLEAR_COINS = 500, TOWER_PRIZE_COINS = 2000;
-const TOWER_MIN_MS = 180000;      // no real climb is faster than this (the server checks it too)
+const TOWER_COIN_MS = 300000;     // the 500 coins need a climb of 5:00 or less
+const TOWER_HP = 100, SPIKE_DMG = 10;
+const TOWER_MIN_MS = 120000;      // no real climb is faster than this (the server checks it too)
 const WEEK_MS = 7 * 864e5, WEEK0 = Date.UTC(2024, 0, 1);   // tower weeks start Monday 00:00 UTC
 const towerWeek = (t = Date.now()) => Math.floor((t - WEEK0) / WEEK_MS);
 const towerWeekEnds = w => WEEK0 + (w + 1) * WEEK_MS;
 const TOWER_STAGES = [
   { name: 'First Steps', color: '#4ade80', feats: [] },
-  { name: 'Narrow Path', color: '#2dd4bf', feats: [] },
-  { name: 'On the Move', color: '#38bdf8', feats: ['move'] },
-  { name: 'Crumble', color: '#60a5fa', feats: ['crumble', 'move'] },
-  { name: 'Bounce House', color: '#818cf8', feats: ['bounce', 'crumble'] },
-  { name: 'Spike Alley', color: '#a78bfa', feats: ['spikes', 'move'] },
-  { name: 'Elevators', color: '#c084fc', feats: ['lift', 'bounce'] },
-  { name: 'Black Ice', color: '#e879f9', feats: ['ice', 'spikes'] },
-  { name: 'Conveyors', color: '#f472b6', feats: ['belt', 'crumble'] },
-  { name: 'Blinkers', color: '#fb7185', feats: ['blink', 'move'] },
-  { name: 'Chaos', color: '#f87171', feats: ['move', 'crumble', 'spikes', 'bounce'] },
-  { name: 'Hot Steps', color: '#fb923c', feats: ['blink', 'ice', 'lift'] },
-  { name: 'Storm', color: '#fbbf24', feats: ['belt', 'spikes', 'move', 'blink'] },
-  { name: 'Last Stand', color: '#facc15', feats: ['crumble', 'lift', 'ice', 'bounce', 'spikes'] },
+  { name: 'On the Move', color: '#2dd4bf', feats: ['move'] },
+  { name: 'Crumble', color: '#38bdf8', feats: ['crumble', 'move'] },
+  { name: 'Spike Alley', color: '#60a5fa', feats: ['spikes', 'move'] },
+  { name: 'Bounce House', color: '#818cf8', feats: ['bounce', 'crumble', 'spikes'] },
+  { name: 'Elevators', color: '#a78bfa', feats: ['lift', 'move', 'spikes'] },
+  { name: 'Black Ice', color: '#c084fc', feats: ['ice', 'spikes', 'crumble'] },
+  { name: 'Conveyors', color: '#e879f9', feats: ['belt', 'spikes', 'move'] },
+  { name: 'Blinkers', color: '#f472b6', feats: ['blink', 'move', 'spikes'] },
+  { name: 'Chaos', color: '#fb7185', feats: ['move', 'crumble', 'spikes', 'bounce'] },
+  { name: 'Hot Steps', color: '#f87171', feats: ['blink', 'ice', 'lift', 'spikes'] },
+  { name: 'Storm', color: '#fb923c', feats: ['belt', 'spikes', 'move', 'blink'] },
+  { name: 'Razor Edge', color: '#fbbf24', feats: ['spikes', 'crumble', 'move', 'ice'] },
+  { name: 'Last Stand', color: '#facc15', feats: ['crumble', 'lift', 'ice', 'bounce', 'spikes', 'blink'] },
   { name: 'Summit', color: '#fde68a', feats: ['move', 'crumble', 'spikes', 'blink', 'ice', 'belt', 'lift', 'bounce'] },
 ];
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -2782,16 +2784,18 @@ function buildTower(week) {
   function place(type, s) {
     const d = s / last;
     const v = prev.type === 'bounce' ? T_BOUNCE : T_JUMP;
-    const dy = v === T_BOUNCE ? R(120, 150 + 50 * d) : R(lerp(40, 62, d), lerp(60, 86, d));
-    let w = lerp(120, 46, d) * R(0.85, 1.15);
+    const dy = v === T_BOUNCE ? R(130, 160 + 45 * d) : R(lerp(46, 68, d), lerp(66, 90, d));
+    let w = lerp(100, 40, d) * R(0.85, 1.15);
     if (type === 'ice') w *= 1.35;
     if (type === 'belt') w *= 1.15;
     if (type === 'bounce') w = 48;
     if (type === 'ledge') w = 170;
     if (type === 'summit') w = 130;
-    w = Math.max(36, Math.round(w));
-    const spikes = type === 'spikes' ? Math.round(R(28, 48)) : 0;
-    let k = Math.min(0.85, lerp(0.32, 0.8, d) * R(0.8, 1.12));
+    w = Math.max(34, Math.round(w));
+    // Spike strips: always on 'spikes' platforms, and from stage 4 they turn up on ordinary ones too
+    const spiky = type === 'spikes' || (s >= 3 && ['solid', 'move', 'crumble', 'ice'].includes(type) && rnd() < lerp(0.1, 0.4, d));
+    const spikes = spiky ? Math.round(R(26, 46)) : 0;
+    let k = Math.min(0.88, lerp(0.42, 0.84, d) * R(0.85, 1.1));
     if (type === 'ledge' || type === 'summit') k *= 0.5;
     const gap = T_RUN * tAir(dy, v) * k;
     if (rnd() < 0.3) dir = -dir;
@@ -2811,10 +2815,11 @@ function buildTower(week) {
     if (type === 'move') {
       p.amp = Math.min(R(30, 65), p.x - lo, hi - p.x);
       if (p.amp < 14) p.type = 'solid';
-      p.spd = Math.PI * 2 / R(2.6, 4.2); p.ph = R(0, Math.PI * 2);
+      p.spd = Math.PI * 2 / R(lerp(3.6, 2.2, d), lerp(4.6, 3.2, d)); p.ph = R(0, Math.PI * 2);
     }
-    if (type === 'lift') { p.amp = R(40, 70); p.spd = Math.PI * 2 / R(2.8, 4); p.ph = R(0, Math.PI * 2); }
-    if (type === 'blink') { p.per = R(2.4, 3.2); p.on = p.per * R(0.55, 0.7); p.ph = R(0, p.per); }
+    if (type === 'lift') { p.amp = R(40, 70); p.spd = Math.PI * 2 / R(lerp(3.6, 2.4, d), lerp(4.2, 3.2, d)); p.ph = R(0, Math.PI * 2); }
+    if (type === 'blink') { p.per = R(2.4, 3.2); p.on = p.per * R(lerp(0.65, 0.5, d), lerp(0.72, 0.58, d)); p.ph = R(0, p.per); }
+    if (type === 'crumble') p.crt = lerp(0.6, 0.35, d);   // seconds before it falls
     if (type === 'belt') p.belt = (rnd() < 0.5 ? -1 : 1) * R(55, 90);
     prev = add(p);
     return prev;
@@ -2854,9 +2859,10 @@ function renderTowerSetup() {
   const cleared = me && me.tower.week === week && me.tower.cleared;
   $('setupBody').innerHTML = `<div class="setup-left"><canvas class="big-preview" id="bigPreview"></canvas>
     <div class="tower-info">
-      <p><b>Climb ${TOWER_STAGES.length} stages to the top.</b> There are no checkpoints: if you fall, you fall. Every stage is harder than the last.</p>
+      <p><b>Climb ${TOWER_STAGES.length} stages to the top.</b> No checkpoints: if you fall, you fall. Every stage is harder than the last.</p>
       <p class="fine">${coarse ? 'Hold ◀ ▶ to move and tap anywhere else to jump.' : 'Move with ← → or A / D. Jump with Space, ↑ or W.'}</p>
-      <p class="fine">${cleared ? 'You already climbed it this week. Climb again to beat your time.' : `First climb this week: ${coinHtml(TOWER_CLEAR_COINS)}`}<br>
+      <p class="fine">You have <b>${TOWER_HP} HP</b>. Every spike takes ${SPIKE_DMG}, and it never heals.</p>
+      <p class="fine">${cleared ? "You already won this week's coins. Climb again to beat your time." : `Climb it in 5:00 or less: ${coinHtml(TOWER_CLEAR_COINS)} (once a week)`}<br>
         Fastest climb of the week wins ${coinHtml(TOWER_PRIZE_COINS)} and the <b>Champion</b> skin.</p>
       <p class="fine desk-only">Press <b>Enter</b> to start.</p>
     </div></div>
@@ -2877,7 +2883,8 @@ function startTower() {
   tower = {
     week, ...built, cam: -200, movers: built.plats.filter(p => p.type === 'move' || p.type === 'lift'),
     timed: built.plats.filter(p => p.type === 'crumble'), spiky: built.plats.filter(p => p.spike),
-    p: { x: TW / 2, y: 0, vx: 0, vy: 0, on: floor, coyote: 0, buffer: 0, stun: 0, squash: 0, skin: myLoadout().skin },
+    p: { x: TW / 2, y: 0, vx: 0, vy: 0, on: floor, coyote: 0, buffer: 0, stun: 0, inv: 0, squash: 0, hp: TOWER_HP, skin: myLoadout().skin },
+    hpLag: TOWER_HP, hpFlash: 0,
     keys: { L: false, R: false, J: false }, in: { L: false, R: false, J: false },
     time: 0, clock: 0, started: false, done: false, sc: 1, maxY: 0, topStage: 0,
     banner: null, parts: [], hurt: 0, quitAsk: 0, ranked: false,
@@ -2911,6 +2918,8 @@ function towerUpdate(dt) {
   t.cam += (target - t.cam) * Math.min(1, dt * 7);
   t.p.squash += (0 - t.p.squash) * Math.min(1, dt * 12);
   t.hurt = Math.max(0, t.hurt - dt);
+  t.hpFlash = Math.max(0, t.hpFlash - dt);
+  t.hpLag = Math.max(t.p.hp, t.hpLag - 25 * dt);
   if (t.banner) { t.banner.life -= dt; if (t.banner.life <= 0) t.banner = null; }
   for (const q of t.parts) { q.x += q.vx * dt; q.y += q.vy * dt; q.vy -= 900 * dt; q.life -= dt; }
   t.parts = t.parts.filter(q => q.life > 0);
@@ -2969,13 +2978,16 @@ function towerStep(t, dt) {
     }
   }
   // Spikes knock you away
-  if (p.stun < 0.2) {
+  p.inv = Math.max(0, p.inv - dt);
+  if (p.inv <= 0 && p.hp > 0) {
     for (const pl of t.spiky) {
       if (!towerSolid(t, pl)) continue;
       const a = pl.x + pl.spike[0], b = pl.x + pl.spike[1];
       if (p.x + hw - 3 > a && p.x - hw + 3 < b && p.y < pl.y + 11 && p.y + T_CUBE > pl.y) {
-        p.on = null; p.stun = 0.45; p.vy = 360; p.vx = (p.x < (a + b) / 2 ? -1 : 1) * 260;
-        t.hurt = 0.3;
+        p.on = null; p.stun = 0.4; p.inv = 1; p.vy = 360; p.vx = (p.x < (a + b) / 2 ? -1 : 1) * 260;
+        p.hp = Math.max(0, p.hp - SPIKE_DMG);
+        t.hurt = 0.3; t.hpFlash = 0.5;
+        if (p.hp <= 0 && t === tower) towerDead();
         towerDust(t, p.x, p.y + hw, '#ff4d5e', 12, 200);
         sfx(120, 0.14, 'sawtooth', 0.05, 0.5); buzz('medium');
         break;
@@ -3006,7 +3018,7 @@ function towerLand(t, pl, speed) {
     p.on = null; p.vy = T_BOUNCE; pl.boing = t.time;
     sfx(300, 0.15, 'square', 0.04, 2.5); buzz('light');
   }
-  if (pl.type === 'crumble' && !pl.cr && !pl.gone) { pl.cr = 0.55; sfx(180, 0.08, 'triangle', 0.03); }
+  if (pl.type === 'crumble' && !pl.cr && !pl.gone) { pl.cr = pl.crt; sfx(180, 0.08, 'triangle', 0.03); }
   if (pl.type === 'summit' && t === tower) finishTower();
 }
 
@@ -3024,13 +3036,31 @@ function finishTower() {
   showTowerResult(t, ms);
 }
 
+// Out of HP: the climb is over
+function towerDead() {
+  const t = tower;
+  if (t.done) return;
+  t.done = true; state = 'towerDone';
+  towerDust(t, t.p.x, t.p.y + T_CUBE / 2, '#ff4d5e', 40, 500);
+  sfx(200, 0.5, 'sawtooth', 0.05, 0.3); buzz('error');
+  native({ type: 'awake', on: false });
+  $('quitBtn').classList.add('hidden');
+  const text = $('winText');
+  text.textContent = 'Out of HP!'; text.style.color = '#ff4d5e';
+  $('againBtn').textContent = 'Try again'; $('againBtn').disabled = false;
+  const pct = Math.min(100, Math.round(t.maxY / t.top * 100));
+  $('results').innerHTML = `<div class="line">You made it to <b>stage ${t.topStage + 1}</b> of ${TOWER_STAGES.length} (${pct}% of the way up) in ${fmtTime(t.clock * 1000)}.</div>
+    <div class="fine">Every spike takes ${SPIKE_DMG} HP. Watch out for the red ones!</div>`;
+  setTimeout(() => { if (tower === t) screens.forEach(x => $(x).classList.toggle('hidden', x !== 'over')); }, 1300);
+}
+
 async function showTowerResult(t, ms) {
   const text = $('winText');
   text.textContent = 'You reached the top!'; text.style.color = '#facc15';
   $('againBtn').textContent = 'Climb again';
   const results = $('results'), lines = [`<div class="tower-time">${fmtTime(ms)}</div>`];
   if (!me) {
-    lines.push(`<div class="line"><b>Log in</b> to save your time, get ${coinHtml(TOWER_CLEAR_COINS)} for your first climb each week and join the weekly tournament.</div>`);
+    lines.push(`<div class="line"><b>Log in</b> to save your time, win ${coinHtml(TOWER_CLEAR_COINS)} for a climb under 5 minutes and join the weekly tournament.</div>`);
     results.innerHTML = lines.join('');
     return;
   }
@@ -3040,7 +3070,8 @@ async function showTowerResult(t, ms) {
     const r = await saveTowerRun(t, ms);
     if (r.newBest) lines.push('<div class="line"><b class="up">New best time!</b></div>');
     else if (r.best < ms) lines.push(`<div class="line">Your best this week: <b>${fmtTime(r.best)}</b></div>`);
-    if (r.coins) lines.push(`<div class="line"><span class="up">+${r.coins}</span> ${coinHtml('')} coins for your first climb this week</div>`);
+    if (r.coins) lines.push(`<div class="line"><span class="up">+${r.coins}</span> ${coinHtml('')} coins for climbing it in under 5 minutes!</div>`);
+    else if (ms > TOWER_COIN_MS && !(me.tower.week === t.week && me.tower.cleared)) lines.push(`<div class="line">Climb it in <b>5:00 or less</b> to win ${coinHtml(TOWER_CLEAR_COINS)}</div>`);
     if (r.rank) lines.push(`<div class="line">You're <b>#${r.rank}</b> this week${r.rank === 1 ? '. Hold on to first place until the week ends to win the prize!' : ''}</div>`);
   } catch (e) {
     lines.push(`<div class="line down">${escapeHtml(e.message)}</div>`);
@@ -3076,11 +3107,14 @@ async function saveTowerRun(t, ms) {
     const top = await getDoc(auth1, 'towerBest/' + t.week);
     if (!top || ms < top.time) await setDoc(auth1, 'towerBest/' + t.week, { uid: auth1.uid, name: me.name, time: ms });
   } else out.best = old;
-  await mutateUser(auth1, d => {
-    if (d.tower.week === t.week && d.tower.cleared) return;
-    d.tower = { ...d.tower, week: t.week, cleared: true };
-    d.coins += TOWER_CLEAR_COINS; out.coins = TOWER_CLEAR_COINS;
-  });
+  // 500 coins once a week, for the first climb of 5:00 or less
+  if (ms <= TOWER_COIN_MS && !(me.tower.week === t.week && me.tower.cleared)) {
+    await mutateUser(auth1, d => {
+      if (d.tower.week === t.week && d.tower.cleared) return;
+      d.tower = { ...d.tower, week: t.week, cleared: true };
+      d.coins += TOWER_CLEAR_COINS; out.coins = TOWER_CLEAR_COINS;
+    });
+  }
   towerLbCache = null;
   const rows = await towerTop(t.week, 50);
   out.rank = rows.findIndex(r => r.id === auth1.uid) + 1;
@@ -3179,7 +3213,7 @@ canvas.addEventListener('pointermove', e => {
 function towerDraw() {
   const t = tower, p = t.p;
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  const sc = t.sc = Math.min(W / (TW + 50), H / 640);
+  const sc = t.sc = Math.min(W / (TW + 90), H / 640);   // room at the sides for the HP and progress bars
   const ox = (W - TW * sc) / 2, cam = t.cam, top = cam + H / sc;
   const X = x => ox + x * sc, Y = y => H - (y - cam) * sc;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -3220,6 +3254,8 @@ function towerDraw() {
   ctx.save();
   ctx.translate(cx, by); ctx.scale(1 + p.squash, 1 - p.squash);
   if (p.stun > 0) ctx.rotate(Math.sin(t.time * 40) * 0.15);
+  if (p.inv > 0 && Math.sin(t.time * 30) > 0) ctx.globalAlpha = 0.4;
+  if (p.hp <= 0) ctx.globalAlpha = 0;
   drawSkin(ctx, 0, -s / 2, s, p.skin, clock);
   if (t.hurt > 0) { ctx.fillStyle = `rgba(255,60,60,${t.hurt * 2})`; ctx.fillRect(-s / 2, -s, s, s); }
   ctx.restore();
@@ -3328,17 +3364,57 @@ function drawTowerHud(t) {
   ctx.fillText(fmtTime(t.clock * 1000), 16, topY);
   ctx.fillStyle = st.color; ctx.font = '700 13px system-ui, sans-serif';
   ctx.fillText(label, 16, topY + 32);
-  // Progress up the tower, on the right edge
-  const bx = W - 16, b1 = topY + 8, b0 = H - (coarse ? 40 : 24), bh = b0 - b1;
+  // HP on the left side and progress up the tower on the right, next to the walls
+  const sc = t.sc, wallL = (W - TW * sc) / 2 - 8 * sc, roomy = wallL > 120;
+  const bw2 = roomy ? 18 : 12;
+  const lx = roomy ? wallL - 44 : wallL / 2, rx = W - lx;
+  const b1 = topY + 96, b0 = H - (coarse ? 150 : 40), bh = Math.max(60, b0 - b1);
+  const pill = (x, y, w, h2) => { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h2, w / 2) : ctx.rect(x, y, w, h2); };
+  const shake = t.hpFlash > 0 ? (Math.random() - 0.5) * 6 * t.hpFlash : 0;
+  // Health
+  const hp = t.p.hp / TOWER_HP, lag = t.hpLag / TOWER_HP, hpCol = `hsl(${Math.round(hp * 120)}, 85%, 55%)`;
+  ctx.save(); ctx.translate(shake, 0);
+  ctx.fillStyle = 'rgba(255,255,255,.1)'; pill(lx - bw2 / 2, b1, bw2, bh); ctx.fill();
+  ctx.save(); pill(lx - bw2 / 2, b1, bw2, bh); ctx.clip();
+  ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillRect(lx - bw2 / 2, b0 - bh * lag, bw2, bh * lag);
+  ctx.fillStyle = hpCol; ctx.fillRect(lx - bw2 / 2, b0 - bh * hp, bw2, bh * hp);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  for (let k = 1; k < TOWER_HP / SPIKE_DMG; k++) ctx.fillRect(lx - bw2 / 2, b0 - bh * k * SPIKE_DMG / TOWER_HP, bw2, 1.5);   // one notch per spike hit
+  ctx.restore();
+  if (t.hpFlash > 0) { ctx.strokeStyle = `rgba(255,77,94,${t.hpFlash * 2})`; ctx.lineWidth = 3; pill(lx - bw2 / 2 - 2, b1 - 2, bw2 + 4, bh + 4); ctx.stroke(); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.fillStyle = hpCol; ctx.font = `900 ${roomy ? 20 : 15}px system-ui, sans-serif`; ctx.fillText(t.p.hp, lx, b1 - 18);
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `800 ${roomy ? 12 : 10}px system-ui, sans-serif`; ctx.fillText('HP', lx, b1 - 5);
+  ctx.restore();
+  // Progress: one colored piece per stage, lit up once you've reached it
   const toBar = y => b0 - Math.max(0, Math.min(1, y / t.top)) * bh;
+  ctx.fillStyle = 'rgba(255,255,255,.1)'; pill(rx - bw2 / 2, b1, bw2, bh); ctx.fill();
+  ctx.save(); pill(rx - bw2 / 2, b1, bw2, bh); ctx.clip();
   for (let s = 0; s < TOWER_STAGES.length; s++) {
     const y0 = s ? t.bounds[s] : 0, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top;
-    ctx.fillStyle = TOWER_STAGES[s].color; ctx.globalAlpha = s <= t.topStage ? 0.9 : 0.25;
-    ctx.fillRect(bx - 3, toBar(y1), 6, toBar(y0) - toBar(y1) - 1);
+    ctx.fillStyle = TOWER_STAGES[s].color; ctx.globalAlpha = s <= t.topStage ? 1 : 0.22;
+    ctx.fillRect(rx - bw2 / 2, toBar(y1) + 1, bw2, toBar(y0) - toBar(y1) - 1);
   }
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillRect(bx - 7, toBar(t.maxY) - 1, 14, 2);
-  ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(bx, toBar(t.p.y), 5, 0, Math.PI * 2); ctx.fill();
+  ctx.restore(); ctx.globalAlpha = 1;
+  if (roomy) {
+    ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (let s = 0; s < TOWER_STAGES.length; s++) {
+      const y0 = s ? t.bounds[s] : 0, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top;
+      ctx.fillStyle = s <= t.topStage ? TOWER_STAGES[s].color : 'rgba(255,255,255,.3)';
+      ctx.fillText(s + 1, rx + bw2 / 2 + 6, (toBar(y0) + toBar(y1)) / 2);
+    }
+  }
+  // Your best height, and where you are now
+  const by = toBar(t.maxY), py = toBar(t.p.y);
+  ctx.fillStyle = '#fff'; ctx.fillRect(rx - bw2 / 2 - 4, by - 1, bw2 + 8, 2);
+  ctx.beginPath(); ctx.arc(rx, py, bw2 / 2 + 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = '#000'; ctx.stroke();
+  const pct = Math.min(100, Math.floor(Math.max(0, t.p.y) / t.top * 100));
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  ctx.font = `900 ${roomy ? 20 : 14}px system-ui, sans-serif`;
+  const tx = Math.min(rx, W - 4 - ctx.measureText(pct + '%').width / 2);   // keep it on screen
+  ctx.fillStyle = '#fff'; ctx.fillText(pct + '%', tx, b1 - 18);
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `800 ${roomy ? 12 : 10}px system-ui, sans-serif`; ctx.fillText('TOP', tx, b1 - 5);
   // New stage banner
   if (t.banner) {
     const b = TOWER_STAGES[t.banner.stage], a = Math.min(1, t.banner.life * 2, (2.4 - t.banner.life) * 6);
