@@ -211,12 +211,54 @@
     box-shadow: 0 6px 24px rgba(0,0,0,.5); pointer-events: none; transition: opacity .2s; max-width: calc(100% - 32px); text-align: center;
   }
   @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+
+  /* ---------- Phones: one column. Computers: sidebar, two columns, bigger previews ---------- */
+  .split, .col-main, .col-side, .setup-left, .setup-right { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .setup-left, .setup-right { gap: 18px; }
+  .desk-only { display: none; }
+  @media (min-width: 900px) {
+    #app { display: grid; grid-template-columns: 230px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .topbar { grid-column: 1 / -1; padding: 14px 28px; }
+    .brand { font-size: 22px; }
+    .tabbar {
+      grid-row: 2; grid-column: 1; display: flex; flex-direction: column; gap: 4px;
+      border-top: 0; border-right: 1px solid var(--line); padding: 18px 12px;
+    }
+    .tabbar button { flex-direction: row; justify-content: flex-start; gap: 14px; font-size: 16px; padding: 12px 14px; border-radius: 10px; }
+    .tabbar button.on { background: var(--panel-2); }
+    .badge { position: static; margin-left: auto; }
+    #tabBody { grid-row: 2; grid-column: 2; padding: 32px 36px 48px; }
+    .tab-inner { max-width: 1100px; gap: 22px; }
+    .split { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+    .hero { text-align: left; gap: 12px; }
+    .hero h1 { font-size: 64px; }
+    .streak { align-self: flex-start; }
+    .demo { height: 360px; }
+    .big-buttons button { padding: 24px 12px; font-size: 20px; }
+    .shop-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+    .desk-only { display: block; }
+    /* Character select */
+    #setup .inner { max-width: 1060px; }
+    #setup .setup-card { max-width: 1040px; display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
+    .setup-left { position: sticky; top: 0; }
+    .big-preview { width: 260px; height: 260px; }
+    .picker { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+    .sticky-go { width: min(1040px, 100%); flex-direction: row-reverse; justify-content: flex-start; }
+    .sticky-go button { width: 260px; }
+    .vs-card { max-width: 1040px; }
+    canvas#c.placing { cursor: crosshair; }
+  }
+  @media (hover: hover) {
+    .tile:hover, .chip:hover { border-color: #55555f; }
+    .skin-card:hover { border-color: #44444e; transform: translateY(-2px); }
+    .skin-card { transition: transform .15s, border-color .15s; }
+  }
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="hint" class="hidden"></div>
-<button id="quitBtn" class="hidden" aria-label="Back to menu">✕</button>
+<button id="quitBtn" class="hidden" aria-label="Leave the match" title="Leave the match (Esc)">✕</button>
 <div id="toast" class="hidden"></div>
 
 <!-- Main app with tabs -->
@@ -993,10 +1035,11 @@ function playTab() {
       <p class="fine">Come back every day for bigger rewards (up to ${streakReward(7)} coins).</p></div>
       <button class="coin-btn" data-act="claimDaily">Claim</button></div></div>`;
   }
-  return `
+  return `<div class="split"><div class="col-main">
     <div class="hero"><canvas class="demo" id="demo" aria-hidden="true"></canvas><h1>BOUNCE DUEL</h1>
       <p>Two cubes bounce around a square room. Spikes orbit each cube and every hit does 1 damage. Use your power at the right moment. First to 0 HP loses.</p>
       ${winStreak >= 2 ? `<span class="streak">${winStreak} wins in a row! Keep it going</span>` : ''}</div>
+    </div><div class="col-side">
     ${reward}
     ${installCard()}
     ${me || !ONLINE ? '' : `<div class="card"><h3>You're playing as a guest</h3>
@@ -1012,7 +1055,8 @@ function playTab() {
       <p>${w.event.desc} Event matches against the CPU pay 50% more coins.</p>
       <button class="event-btn" data-act="playEvent">Play event match</button>
     </div>
-`;
+    <p class="fine desk-only">On a computer: <b>Space</b> or <b>A</b> uses your power, <b>Esc</b> leaves a match.</p>
+  </div></div>`;
 }
 
 // ---------- Events tab ----------
@@ -1028,7 +1072,7 @@ function eventsTab() {
       <div class="row"><div class="bar grow"><span style="width:${(have / c.target) * 100}%"></span></div><span class="fine">${have} / ${c.target}</span></div></div>`;
   }).join('');
   const sale = SKINS.find(s => s.id === w.event.sale);
-  return `
+  return `<div class="split">
     <div class="card event">
       <div class="row between"><span class="eyebrow" style="color:var(--event)">This week</span><span class="fine">Ends in <span class="timer" data-until="${w.ends}"></span></span></div>
       <h2>${w.event.name}</h2>
@@ -1045,7 +1089,7 @@ function eventsTab() {
       <div class="row between"><h3>Daily challenges</h3><span class="fine">New in <span class="timer" data-until="${Date.now() + msToMidnight()}"></span></span></div>
       ${me ? '' : '<p class="fine"><button class="link" data-act="goto" data-to="profile">Log in</button> to track challenges and earn coins.</p>'}
       ${list}
-    </div>`;
+    </div></div>`;
 }
 
 // ---------- Shop tab ----------
@@ -1076,7 +1120,7 @@ function groupsTab() {
   if (!me) return `<div class="card"><h3>Play with your friends</h3><p>Make a group, share its code with your friends and see who has the highest score.</p>
     <button data-act="goto" data-to="profile">Log in or create an account</button></div>`;
   if (groupView) return `<div class="card" id="groupDetail"><button class="link" data-act="closeGroup">← All groups</button><p class="fine">Loading group…</p></div>`;
-  return `
+  return `<div class="split"><div class="col-main">
     <div class="card">
       <h3>Your groups</h3>
       <div id="myGroups" class="lb">${me.groups.length ? '<p class="fine">Loading…</p>' : '<p class="fine">You are not in any groups yet.</p>'}</div>
@@ -1087,11 +1131,11 @@ function groupsTab() {
       <h3>Make a group</h3>
       <form id="createGroupForm" class="row"><input class="grow" maxlength="24" placeholder="Group name" autocomplete="off"><button class="small">Create</button></form>
       <p class="err" id="groupErr"></p>
-    </div>
+    </div></div><div class="col-side">
     <div class="card">
       <div class="row between"><h3>Top players</h3><button class="small ghost" data-act="loadTop">Show</button></div>
       <div id="topList" class="lb"></div>
-    </div>`;
+    </div></div></div>`;
 }
 function lbRows(users) {
   return users.map((u, i) => `<div class="lb-row ${auth1 && u.id === auth1.uid ? 'me' : ''}">
@@ -1371,9 +1415,10 @@ function renderSetup() {
   const powers = Object.entries(POWERS).map(([id, x]) => tile('power', id, lo.power === id, `${x.name}<small>${POWER_SHORT[id]}</small>`)).join('');
   const cpu = online ? '' : section('CPU difficulty', Object.entries(DIFFICULTIES).map(([id, d]) =>
     tile('difficulty', id, difficulty === id, `${d.name}<small>Win: ${d.coins}${isEvent ? ' +50%' : ''} coins</small>`)).join(''));
-  $('setupBody').innerHTML = `<canvas class="big-preview" id="bigPreview"></canvas>${nameRow}
-    ${section('Skin', skins)}${owned.length < SKINS.length ? '<p class="fine" style="margin-top:-12px">Get more skins in the Shop.</p>' : ''}
-    ${section('Spike', spikes)}${section('Power', powers)}${cpu}`;
+  $('setupBody').innerHTML = `<div class="setup-left"><canvas class="big-preview" id="bigPreview"></canvas>${nameRow}
+    <p class="fine desk-only">Press <b>Enter</b> to ${online ? 'get ready' : 'start'}.</p></div>
+    <div class="setup-right">${section('Skin', skins)}${owned.length < SKINS.length ? '<p class="fine" style="margin-top:-12px">Get more skins in the Shop.</p>' : ''}
+    ${section('Spike', spikes)}${section('Power', powers)}${cpu}</div>`;
   drawStaticSkins($('setupBody'));
   const go = $('startBtn');
   if (online) {
@@ -1469,6 +1514,7 @@ function pressPower() {
 }
 
 function updateHint() {
+  canvas.classList.toggle('placing', state === 'place' || state === 'aim');
   if ((state === 'place' || state === 'aim') && players[placing]) {
     const p = players[placing];
     const left = online ? ` <span class="fine">(${Math.max(0, Math.ceil(PLACE_SECONDS - (Date.now() - online.phaseAt) / 1000))}s)</span>` : '';
@@ -1552,7 +1598,20 @@ canvas.addEventListener('pointerup', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (state !== 'play' || e.target.tagName === 'INPUT') return;
+  if (e.target.tagName === 'INPUT') return;
+  const visible = id => !$(id).classList.contains('hidden');
+  if (e.key === 'Escape') {
+    if (['place', 'aim', 'wait', 'countdown', 'play'].includes(state)) $('quitBtn').click();
+    else if (visible('setup')) $('setupBack').click();
+    else if (visible('mm') || visible('over')) (visible('mm') ? $('mmCancel') : $('overMenu')).click();
+    return;
+  }
+  if (e.key === 'Enter') {
+    if (visible('setup') && !$('startBtn').disabled) { e.preventDefault(); $('startBtn').click(); }
+    else if (visible('over') && !$('againBtn').disabled) { e.preventDefault(); $('againBtn').click(); }
+    return;
+  }
+  if (state !== 'play') return;
   const k = e.key.toLowerCase();
   if (k === 'a' || k === ' ') { pressPower(); e.preventDefault(); }
 });
@@ -2500,15 +2559,15 @@ function drawAimArrow(p) {
 // Animated previews on the setup screen and in the shop
 function drawPreviews() {
   document.querySelectorAll('#bigPreview').forEach(cv => {
-    const size = 150;
+    const size = cv.clientWidth || 150;
     if (cv.width !== size * DPR) { cv.width = size * DPR; cv.height = size * DPR; }
     const c = cv.getContext('2d');
     c.setTransform(DPR, 0, 0, DPR, 0, 0);
     c.fillStyle = '#000'; c.fillRect(0, 0, size, size);
     const i = myIdx(), lo = myLoadout();
-    const fake = { x: 75, y: 75, unit: 0.42, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
+    const fake = { x: size / 2, y: size / 2, unit: 0.42 * size / 150, spike: lo.spike, skin: lo.skin, color: COLORS[i], angle: clock * SPIKES[lo.spike].spin * (i ? -1 : 1), spin: i ? -1 : 1, rage: 0 };
     drawSpikes(c, fake);
-    drawSkin(c, 75, 75, sizeOf(fake), lo.skin, clock);
+    drawSkin(c, size / 2, size / 2, sizeOf(fake), lo.skin, clock);
   });
 }
 // The live preview on the Play tab: your cube against a rival, bouncing on their own
