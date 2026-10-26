@@ -22,9 +22,9 @@ Google needs your privacy policy online, plus a web page where people can delete
 2. Merge the `claude/awesome-volta-53053w` branch into `main`.
 
 After a minute these links work:
-- Game: `https://allo20206real.github.io/good-fun-game/`
-- Privacy policy: `https://allo20206real.github.io/good-fun-game/privacy.html`
-- Account deletion: `https://allo20206real.github.io/good-fun-game/privacy.html#delete`
+- Game: `https://bounceduel.se/`
+- Privacy policy: `https://bounceduel.se/privacy.html`
+- Account deletion: `https://bounceduel.se/privacy.html#delete`
 
 ## Step 3: Build the Android app
 
@@ -61,7 +61,7 @@ Tick the declarations and click **Create app**.
 
 The **Dashboard** shows a checklist. Go through each item:
 
-- **Privacy policy:** `https://allo20206real.github.io/good-fun-game/privacy.html`
+- **Privacy policy:** `https://bounceduel.se/privacy.html`
 - **App access:** choose **All or some functionality is restricted**, then add login details for a test account (create one in the game first). Note: "The game can be played as a guest; logging in saves coins and score."
 - **Ads:** No, my app does not contain ads.
 - **Content rating:** start the questionnaire, pick category **Game**, and answer **No** to violence, sexuality, language, drugs and gambling. For "Can users interact or exchange content?", answer **Yes**: players see each other's display names on leaderboards. It should come out as Everyone / PEGI 3.
@@ -70,7 +70,7 @@ The **Dashboard** shows a checklist. Go through each item:
 - **Data safety:**
   - Does your app collect or share user data? **Yes**
   - Is all data encrypted in transit? **Yes**
-  - Can users request deletion? **Yes**, and the deletion link is `https://allo20206real.github.io/good-fun-game/privacy.html#delete`
+  - Can users request deletion? **Yes**, and the deletion link is `https://bounceduel.se/privacy.html#delete`
   - Data collected (all **Collected**, not shared, used for **App functionality** and **Account management**):
     - Personal info → **Email address**
     - Personal info → **User IDs**

@@ -5,7 +5,7 @@ The app in `mobile/` is ready for the App Store: it has an app icon, a bundle ID
 ## What you need first
 
 1. **Firebase connected**: done (project `bounce-duel`). Apple's reviewers will create an account and log in.
-2. **The website live** (GitHub Pages, also in FIREBASE_SETUP.md), so the privacy policy is online at `https://allo20206real.github.io/good-fun-game/privacy.html`.
+2. **The website live** (GitHub Pages, also in FIREBASE_SETUP.md), so the privacy policy is online at `https://bounceduel.se/privacy.html`.
 3. **An Apple Developer account**: enroll at <https://developer.apple.com/programs/> ($99 per year). Approval can take a day or two.
 4. **A free Expo account**: sign up at <https://expo.dev/signup>.
 
@@ -37,7 +37,7 @@ In App Store Connect, open the app and fill in:
 | Name | Bounce Duel |
 | Subtitle | Bouncing cube battles |
 | Category | Games → Arcade (secondary: Games → Action) |
-| Privacy Policy URL | `https://allo20206real.github.io/good-fun-game/privacy.html` |
+| Privacy Policy URL | `https://bounceduel.se/privacy.html` |
 | Support URL | `https://github.com/allo20206real/good-fun-game/issues` |
 | Age rating | Answer "None" to every question → 4+ |
 | Price | Free |

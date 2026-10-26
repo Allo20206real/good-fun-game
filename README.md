@@ -76,9 +76,9 @@ Accounts are stored in the `bounce-duel` Firebase project (see [FIREBASE_SETUP.m
 ## Play it
 
 - **Android app**: download **BounceDuel.apk** from the [latest release](https://github.com/Allo20206real/good-fun-game/releases/latest) on your Android phone and install it. GitHub builds a new APK automatically whenever the game changes.
-- **iPhone (and any phone)**: open the game's link (GitHub Pages, below) and tap Share → **Add to Home Screen**. It installs with its own icon and opens full-screen like an app.
+- **iPhone (and any phone)**: open **https://bounceduel.se**  and tap Share → **Add to Home Screen**. It installs with its own icon and opens full-screen like an app.
 
-- **On the web**: open `index.html` in a browser, or publish it with the included GitHub Pages workflow (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md)).
+- **On the web**: **https://bounceduel.se** (published with GitHub Pages from this repo; the `CNAME` file holds the domain, so keep it).
 - **On your phone**: the `mobile/` folder is an Expo app that wraps the game. See [`mobile/README.md`](mobile/README.md).
 - **On the App Store**: the Expo app is set up for release. See [APP_STORE.md](APP_STORE.md) for how to build and submit it.
 - **On Google Play**: see [GOOGLE_PLAY.md](GOOGLE_PLAY.md). Store images (icon, feature graphic, screenshots) are in [`store/`](store/).

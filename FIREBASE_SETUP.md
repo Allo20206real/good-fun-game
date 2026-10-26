@@ -56,7 +56,7 @@ Then run `npm run sync-game` in `mobile/` (or just `npm start`) so the phone app
 The game is one file, `index.html`. The included GitHub workflow (`.github/workflows/pages.yml`) publishes it as a free website:
 
 1. On GitHub, open the repo's **Settings → Pages** and set **Source** to **GitHub Actions**.
-2. Merge the changes into the `main` branch. The workflow then publishes the site at `https://<your-username>.github.io/good-fun-game/`.
+2. In **Source**, pick **Deploy from a branch** and choose the branch with the game. The site is live at **https://bounceduel.se** (the `CNAME` file in the repo holds the custom domain, so don't delete it).
 
 Share that link with your friends. It works on phones, tablets and computers, and everyone logs in with their own email and password.
 
