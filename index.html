@@ -103,6 +103,13 @@
   .tower-info p { margin: 0 0 10px; }
   .tower-time { font-size: 44px; font-weight: 900; letter-spacing: 1px; margin: 4px 0 8px; font-variant-numeric: tabular-nums; }
   .big-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .big-buttons .wide { grid-column: span 2; }
+  .lobby-list { width: min(340px, 100%); margin: 14px auto; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+  .lobby-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .lobby-row.empty { color: var(--muted); border-style: dashed; background: none; }
+  .lobby-row .dot { width: 12px; height: 12px; border-radius: 3px; background: var(--line); flex: none; }
+  .lobby-row .tag { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; background: var(--coin); color: #000; padding: 2px 6px; border-radius: 999px; }
+  #roomStart { width: min(340px, 100%); margin: 0 auto 10px; display: block; }
   .big-buttons button { padding: 18px 12px; font-size: 18px; }
   .hero { text-align: center; display: flex; flex-direction: column; gap: 8px; padding: 8px 0; }
   .demo { width: 100%; height: 170px; display: block; border-radius: 16px; border: 1px solid var(--line); background: #050507; }
@@ -215,6 +222,7 @@
     position: fixed; top: calc(48px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 18px;
     pointer-events: none; text-shadow: 0 0 6px #000, 0 0 6px #000; padding: 0 16px;
   }
+  #hint.three { top: calc(92px + env(safe-area-inset-top)); }   /* below the middle HP bar */
   #quitBtn {
     position: fixed; top: calc(12px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
     width: 34px; height: 34px; padding: 0; border-radius: 50%; font-size: 16px; background: #1a1a1f; color: #fff; border: 1px solid #333;
@@ -574,7 +582,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // ============================================================================
 // Game data
 // ============================================================================
-const COLORS = ['#ff4d5e', '#4da6ff'];
+const COLORS = ['#ff4d5e', '#4da6ff', '#4ade80'];
 const HIT_COOLDOWN = 0.02;
 const START_SCORE = 100, START_COINS = 50;
 // Ranks by score: something to climb towards
@@ -1030,11 +1038,11 @@ $('tabBody').addEventListener('click', async e => {
   if (act === 'play1p' || act === 'playEvent') {
     mode = '1p'; isEvent = act === 'playEvent';
     openSetup();
-  } else if (act === 'playOnline') {
-    if (!MULTIPLAYER) return toast('Two-player works in the Bounce Duel app and on the website.');
-    if (!me) return openLogin('create', 'Log in or create an account to play two-player. Your coins and score are saved too.');
+  } else if (act === 'playOnline' || act === 'playOnline3') {
+    if (!MULTIPLAYER) return toast('Online matches work in the Bounce Duel app and on the website.');
+    if (!me) return openLogin('create', 'Log in or create an account to play online. Your coins and score are saved too.');
     if (needsUsername) return showUsernamePicker(me.name);
-    startMatchmaking();
+    startMatchmaking(act === 'playOnline3' ? 3 : 2);
   } else if (act === 'friend') openFriendPanel();
   else if (act === 'tower') openTower();
   else if (act === 'goto') { tab = b.dataset.to; renderApp(); }
@@ -1101,11 +1109,12 @@ function playTab() {
     ${reward}
     ${installCard()}
     ${me || !ONLINE ? '' : `<div class="card"><h3>You're playing as a guest</h3>
-      <p>Log in to save your coins and your two-player score, and to play two-player online against real people.</p>
+      <p>Log in to save your coins and score, and to play online against real people.</p>
       <div class="row"><button class="small" data-act="loginPrompt" data-pm="create">Create account</button><button class="small ghost" data-act="loginPrompt" data-pm="login">Log in</button></div></div>`}
     <div class="big-buttons">
-      <button data-act="play1p">Single player</button>
+      <button data-act="play1p" class="wide">Single player</button>
       <button data-act="playOnline" ${me ? '' : 'class="ghost"'}>Two players<br><span style="font-size:13px;font-weight:600">${!MULTIPLAYER ? 'In the app' : me ? 'Play online' : 'Log in to play'}</span></button>
+      <button data-act="playOnline3" ${me ? '' : 'class="ghost"'}>Three players<br><span style="font-size:13px;font-weight:600">${!MULTIPLAYER ? 'In the app' : me ? 'Play online' : 'Log in to play'}</span></button>
     </div>
     ${MULTIPLAYER ? '<button class="small ghost friend-btn" data-act="friend">Play with a friend</button>' : ''}
     <button class="tower-btn" data-act="tower"><span>The Tower<small>Climb ${TOWER_STAGES.length} stages · weekly tournament</small></span><span aria-hidden="true">→</span></button>
@@ -1566,7 +1575,7 @@ $('startBtn').onclick = () => {
   sfx(520, 0.1, 'square', 0.04, 1.5);
   if (towerSetup) startTower(); else if (online) setReady(); else startMatch();
 };
-$('againBtn').onclick = () => (mode === 'tower' ? startTower() : mode === 'online' ? startMatchmaking(lastRoom) : startMatch());
+$('againBtn').onclick = () => (mode === 'tower' ? startTower() : mode === 'online' ? (lastRoom ? enterLobby(lastRoom.code, lastRoom.isHost) : startMatchmaking(lastSize)) : startMatch());
 $('overMenu').onclick = () => show('app');
 $('quitBtn').onclick = () => {
   if (tower && state === 'tower') {
@@ -1586,6 +1595,7 @@ function pressPower() {
 
 function updateHint() {
   canvas.classList.toggle('placing', state === 'place' || state === 'aim');
+  hint.classList.toggle('three', players.length === 3);
   if ((state === 'place' || state === 'aim') && players[placing]) {
     const p = players[placing];
     const left = online ? ` <span class="fine">(${Math.max(0, Math.ceil(PLACE_SECONDS - (Date.now() - online.phaseAt) / 1000))}s)</span>` : '';
@@ -1593,18 +1603,35 @@ function updateHint() {
       (state === 'place' ? 'tap inside the room to place your cube' : 'drag or tap to choose the bounce direction') + left;
     hint.classList.remove('hidden');
   } else if (state === 'wait' && online) {
-    hint.innerHTML = `Waiting for <b>${escapeHtml(online.oppName)}</b> to place their cube…`;
+    hint.innerHTML = online.n === 3 ? 'Waiting for the others to place their cubes…' : `Waiting for <b>${escapeHtml(online.oppName)}</b> to place their cube…`;
+    hint.classList.remove('hidden');
+  } else if (state === 'play' && myPlayer()?.out) {
+    hint.innerHTML = `You're out in <b>${ordinal(myPlayer().place)}</b> place. Watching the others…`;
     hint.classList.remove('hidden');
   } else {
     hint.classList.add('hidden');
   }
 }
 
+const ordinal = n => n + (['th', 'st', 'nd', 'rd'][n] || 'th');
+
 function clampPos(x, y, s = 64 * U) {
   const h = s / 2;
   return { x: Math.min(AX + AS - h, Math.max(AX + h, x)), y: Math.min(AY + AS - h, Math.max(AY + h, y)) };
 }
 function overlaps(a, x, y) { const s = sizeOf(a); return a.placed && Math.abs(a.x - x) < s && Math.abs(a.y - y) < s; }
+// The cubes still in the match (in a three-player match, knocked-out cubes leave the room)
+const inPlay = () => players.filter(p => !p.out);
+// The nearest other cube still in the match: who freeze, blink and the CPU aim at
+function foeOf(p) {
+  let best = null, bd = Infinity;
+  for (const q of players) {
+    if (q === p || q.out) continue;
+    const d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d < bd) { bd = d; best = q; }
+  }
+  return best || players[1 - p.i] || p;
+}
 
 function launch(p, dx, dy) {
   const l = Math.hypot(dx, dy) || 1;
@@ -1645,7 +1672,7 @@ canvas.addEventListener('pointerdown', e => {
   const p = players[placing];
   if (state === 'place') {
     const pos = clampPos(e.clientX, e.clientY);
-    if (overlaps(players[1 - placing], pos.x, pos.y)) return;
+    if (players.some(q => q !== p && overlaps(q, pos.x, pos.y))) return;
     p.x = pos.x; p.y = pos.y; p.placed = true;
     state = 'aim';
     sfx(330, 0.05);
@@ -1729,8 +1756,8 @@ function spikeHitsBox(s, b) {
 
 // ---------- Powers ----------
 function usePower(p) {
-  if (!p || state !== 'play' || p.powerCd > 0 || p.frozen > 0) return;
-  const opp = players[1 - p.i], def = POWERS[p.power];
+  if (!p || p.out || state !== 'play' || p.powerCd > 0 || p.frozen > 0) return;
+  const opp = foeOf(p), def = POWERS[p.power];
   p.powerCd = def.cd;
   p.powersUsed++;
   if (p.power === 'dash') p.dash = 2.5;
@@ -1774,7 +1801,7 @@ function cpuAnswer(cpu) {
   if (cpu?.isCpu && cpu.aiPlan === null && cpu.powerCd <= 0 && cpu.frozen <= 0 && Math.random() < cpu.ai.counter) cpuPlan(cpu);
 }
 function cpuWants(p) {
-  const opp = players[1 - p.i];
+  const opp = foeOf(p);
   const dist = Math.hypot(opp.x - p.x, opp.y - p.y), R = orbitOf(p);
   const near = (spikes, target, k) => spikes.some(s => Math.hypot(s.x - target.x, s.y - target.y) < sizeOf(target) * k);
   const want = {
@@ -1854,6 +1881,7 @@ function update(dt) {
   const speedMul = Math.min(4, 1 + elapsed / 25);
 
   for (const p of players) {
+    if (p.out) continue;
     const h = sizeOf(p) / 2;
     p.powerCd = Math.max(0, p.powerCd - dt * mods.powerRate);
     for (const k of ['dash', 'shield', 'frozen', 'rage', 'hitCd', 'flash']) p[k] = Math.max(0, p[k] - dt);
@@ -1869,8 +1897,62 @@ function update(dt) {
     p.angle += SPIKES[p.spike].spin * p.spin * speedMul * (p.rage > 0 ? 1.6 : 1) * dt;
   }
 
-  // Cube vs cube bounce. A frozen cube acts like a wall.
-  const [a, b] = players;
+  // Cube vs cube bounce, for every pair still in the match
+  const live = inPlay();
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) bump(live[i], live[j]);
+
+  // Spikes deal 1 damage to the other cubes
+  for (const atk of live) {
+    for (const tgt of live) {
+      if (tgt === atk || atk.hitCd > 0) continue;
+      const hit = getSpikes(atk).find(s => spikeHitsBox(s, tgt));
+      if (!hit) continue;
+      atk.hitCd = SPIKES[atk.spike].hitCd || HIT_COOLDOWN;
+      if (tgt.shield > 0) { burst(hit.x, hit.y, '#29f0ff', 3); continue; }
+      tgt.hp = Math.max(0, tgt.hp - 1);
+      atk.dealt++;
+      if (tgt === myPlayer()) buzz('light');
+      tgt.flash = 0.15;
+      shake = Math.min(8, shake + 1.5);
+      burst(hit.x, hit.y, atk.color, 4);
+      hitFx(tgt, hit.x, hit.y, atk.color);
+      if (clock - lastHitSound > 0.06) { lastHitSound = clock; sfx(120 + Math.random() * 60, 0.06, 'square', 0.035); }
+    }
+  }
+
+  const dead = live.filter(p => p.hp <= 0);
+  if (!dead.length) return;
+  if (players.length === 2) return endMatch(dead);
+  knockOut(dead);
+}
+
+// Three players: cubes at 0 HP are knocked out and the others play on. Places are given out
+// from the back: the first one out is 3rd. Two out at once: whoever dealt more damage places higher.
+function knockOut(dead) {
+  const left = inPlay().length;
+  dead.sort((a, b) => a.dealt - b.dealt);
+  const others = inPlay().filter(q => !dead.includes(q));
+  dead.forEach((p, k) => {
+    p.out = true; p.place = left - k;
+    // What the rest had at that moment decides the score (see threeScores)
+    p.othersHp = players.filter(q => q !== p && (!q.out || dead.includes(q))).map(q => q.hp);
+    burst(p.x, p.y, p.color, 24); burst(p.x, p.y, '#fff', 12);
+    rings.push({ x: p.x, y: p.y, r: 10 * U, life: 0.35, color: '#fff' });
+    popups.push({ x: p.x, y: p.y - sizeOf(p), text: `${p.name} is out!`, color: p.color, life: 1.6, big: true });
+    shake = 14; sfx(160, 0.3, 'sawtooth', 0.05, 0.4);
+    if (p === myPlayer()) buzz('error');
+  });
+  for (const q of others) if (q.hpAtFirstOut === undefined) q.hpAtFirstOut = q.hp;
+  if (online) onlineKnockOut(dead);
+  if (others.length <= 1) {
+    if (others[0]) others[0].place = 1;
+    endMatch3();
+  }
+  updateHint();
+}
+
+// A frozen cube acts like a wall
+function bump(a, b) {
   const S = sizeOf(a);
   const ox = S - Math.abs(a.x - b.x), oy = S - Math.abs(a.y - b.y);
   if (ox > 0 && oy > 0) {
@@ -1886,33 +1968,12 @@ function update(dt) {
       sfx(180, 0.05, 'triangle', 0.05);
     }
     // A bump next to a wall can push a cube into it; keep both inside the room
-    for (const p of players) {
+    for (const p of [a, b]) {
       const h = sizeOf(p) / 2;
       p.x = Math.min(AX + AS - h, Math.max(AX + h, p.x));
       p.y = Math.min(AY + AS - h, Math.max(AY + h, p.y));
     }
   }
-
-  // Spikes deal 1 damage to the other cube
-  for (const atk of players) {
-    const tgt = players[1 - atk.i];
-    if (atk.hitCd > 0) continue;
-    const hit = getSpikes(atk).find(s => spikeHitsBox(s, tgt));
-    if (!hit) continue;
-    atk.hitCd = SPIKES[atk.spike].hitCd || HIT_COOLDOWN;
-    if (tgt.shield > 0) { burst(hit.x, hit.y, '#29f0ff', 3); continue; }
-    tgt.hp = Math.max(0, tgt.hp - 1);
-    atk.dealt++;
-    if (tgt === myPlayer()) buzz('light');
-    tgt.flash = 0.15;
-    shake = Math.min(8, shake + 1.5);
-    burst(hit.x, hit.y, atk.color, 4);
-    hitFx(tgt, hit.x, hit.y, atk.color);
-    if (clock - lastHitSound > 0.06) { lastHitSound = clock; sfx(120 + Math.random() * 60, 0.06, 'square', 0.035); }
-  }
-
-  const dead = players.filter(p => p.hp <= 0);
-  if (dead.length) endMatch(dead);
 }
 
 // ============================================================================
@@ -1920,12 +1981,14 @@ function update(dt) {
 // ============================================================================
 // One phone (the "host") runs the match and sends its state 15 times a second; the other
 // phone (the "guest") shows it smoothly and sends its power button presses back.
-const MATCH_VERSION = 1;
-const ROOM_VERSION = 1001;    // queue entries in a friend room; older app versions ignore them
-const ROOM_SECONDS = 180;
-let lastRoom = null;          // the friend room of the last online match, for a rematch
+const MATCH_VERSION = 1;      // two-player matches (the same format older app versions use)
+const MATCH3_VERSION = 3;     // three-player matches; older app versions never pick these up
+const KEYS = ['a', 'b', 'c'];
+let lastRoom = null;          // the friend room of the last online match, to go back to after it
+let lastSize = 2;             // two or three players, for "Play again"
 let pendingRoom = (new URLSearchParams(location.search).get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
 const SEARCH_SECONDS = window.BD_SEARCH_SECONDS || 30;
+const SEARCH3_SECONDS = window.BD_SEARCH_SECONDS || 45;
 const SELECT_SECONDS = window.BD_SELECT_SECONDS || 20;
 const PLACE_SECONDS = 10;
 const SEND_EVERY = 1 / 15;
@@ -1945,80 +2008,42 @@ function mmShow(title, text, { spin = true, button = 'Cancel', onButton } = {}) 
   $('mmCancel').onclick = onButton || (() => show('app'));
 }
 
-// room: a friend room code. Both friends wait in the queue with the same code and only pair with each other.
-async function startMatchmaking(room = null) {
+// Random matchmaking for 2 or 3 players
+async function startMatchmaking(size = 2) {
   if (mmSession || online) return;
-  const myId = auth1.uid;
-  const sess = mmSession = { cancelled: false, found: false, stops: [], offset: 0, room };
-  lastRoom = room;
+  const myId = auth1.uid, three = size === 3;
+  const secs = three ? SEARCH3_SECONDS : SEARCH_SECONDS;
+  const sess = mmSession = { cancelled: false, found: false, stops: [], offset: 0, size };
+  lastRoom = null; lastSize = size;
   state = 'menu'; players = [];
-  if (room) {
-    mmShow('Friend room', 'Waiting for your friend… Send them the code or the link. They tap Play with a friend and type the code.', { onButton: () => cancelMatchmaking(null) });
-    $('mmExtra').innerHTML = `<div class="room-code">${room}</div><button class="small" id="roomShare">Send invite link</button>`;
-    $('roomShare').onclick = () => shareRoom(room);
-  } else mmShow('Matchmaking…', 'Looking for another player', { onButton: () => cancelMatchmaking(null) });
-  const ends = Date.now() + (room ? ROOM_SECONDS : SEARCH_SECONDS) * 1000;
+  mmShow(three ? 'Three-player matchmaking…' : 'Matchmaking…', three ? 'Looking for two other players' : 'Looking for another player', { onButton: () => cancelMatchmaking(null) });
+  const ends = Date.now() + secs * 1000;
   const tick = () => { if (mmSession === sess) $('mmTimer').textContent = Math.max(0, Math.ceil((ends - Date.now()) / 1000)) + 's'; };
   tick(); sess.timer = setInterval(tick, 250);
   try {
     await rtdb('DELETE', `queue/${myId}`);
-    await rtdb('PUT', `queue/${myId}`, room ? { t: SERVER_TIME, name: me.name, v: ROOM_VERSION, room } : { t: SERVER_TIME, name: me.name, v: MATCH_VERSION });
+    await rtdb('PUT', `queue/${myId}`, { t: SERVER_TIME, name: me.name, v: three ? MATCH3_VERSION : MATCH_VERSION });
     const mine = await rtdb('GET', `queue/${myId}`);
     sess.offset = (mine?.t || Date.now()) - Date.now();
     if (sess.cancelled) return;
-    // Another player may pair with us: watch our spot in the queue
+    // Another player may pick us: watch our spot in the queue
     sess.stops.push(rtdbStream(`queue/${myId}/match`, m => {
       if (m && m.id && m.by !== myId && !sess.found && !sess.cancelled) { sess.found = true; foundMatch(sess, m.id, 'guest'); }
     }));
     while (!sess.cancelled && !sess.found && Date.now() < ends) {
-      await tryPair(sess, myId);
+      await (three ? tryGroup(sess, myId) : tryPair(sess, myId));
       if (sess.found || sess.cancelled) return;
       await sleep(800 + Math.random() * 700);
     }
     if (sess.found || sess.cancelled) return;
-    // Time's up. Last check that nobody paired with us at the final second
+    // Time's up. Last check that nobody picked us at the final second
     const last = await rtdb('GET', `queue/${myId}/match`).catch(() => null);
     if (last?.id && last.by !== myId && !sess.found) { sess.found = true; return foundMatch(sess, last.id, 'guest'); }
-    cancelMatchmaking(room ? "Your friend didn't join in time. Make a new room and try again!" : 'No other players are searching right now. Try again in a bit, or tap Play with a friend!');
+    cancelMatchmaking(three ? 'Not enough players are looking for a three-player match right now. Try again in a bit, or play with friends!'
+      : 'No other players are searching right now. Try again in a bit, or tap Play with a friend!');
   } catch (e) {
     cancelMatchmaking(e.message === 'DENIED' ? 'Online matches are not set up on the server yet.' : e.message);
   }
-}
-
-function newRoomCode() {
-  let c = '';
-  for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-  return c;
-}
-async function shareRoom(room) {
-  const url = `https://bounceduel.se/?room=${room}`, text = `Play Bounce Duel with me! Room code: ${room}`;
-  if (navigator.share) { try { await navigator.share({ title: 'Bounce Duel', text, url }); } catch {} return; }
-  try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Invite link copied'); }
-  catch { toast(`Room code: ${room}`); }
-}
-// The Play with a friend screen: make a room, or join one with a code
-function openFriendPanel() {
-  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
-  if (needsUsername) return showUsernamePicker(me.name);
-  mmShow('Play with a friend', 'Make a room and send the code to a friend, or type the code your friend sent you.', { spin: false, button: 'Back' });
-  $('mmExtra').innerHTML = `<div class="friend-panel"><button id="roomMake">Make a room</button>
-    <div class="or">or join a room</div>
-    <form id="roomForm" class="row"><input class="grow code-input" maxlength="4" placeholder="CODE" value="${escapeHtml(pendingRoom)}" autocapitalize="characters" spellcheck="false" aria-label="Room code"><button class="ghost">Join</button></form>
-    <p class="err" id="roomErr"></p></div>`;
-  $('roomMake').onclick = () => startMatchmaking(newRoomCode());
-  $('roomForm').onsubmit = e => {
-    e.preventDefault();
-    try { joinRoom($('roomForm').querySelector('input').value); } catch (err) { $('roomErr').textContent = err.message; }
-  };
-}
-function joinRoom(code) {
-  code = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (code.length !== 4) throw new GameError('Room codes are 4 letters or numbers.');
-  if (!MULTIPLAYER) throw new GameError('Friend rooms work in the Bounce Duel app and on the website.');
-  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
-  if (needsUsername) return showUsernamePicker(me.name);
-  pendingRoom = '';
-  startMatchmaking(code);
 }
 
 async function tryPair(sess, myId) {
@@ -2026,8 +2051,7 @@ async function tryPair(sess, myId) {
   const now = Date.now() + sess.offset;
   // Only start a match with players whose id sorts after ours, so two players never grab each other at once.
   // With three or more searching, the partner is picked at random.
-  const free = Object.entries(q).filter(([uid, e]) => uid > myId && e && !e.match && now - e.t < ((sess.room ? ROOM_SECONDS : SEARCH_SECONDS) + 5) * 1000
-    && (sess.room ? e.v === ROOM_VERSION && e.room === sess.room : e.v === MATCH_VERSION));
+  const free = Object.entries(q).filter(([uid, e]) => uid > myId && e && !e.match && e.v === MATCH_VERSION && now - e.t < (SEARCH_SECONDS + 5) * 1000);
   if (!free.length || sess.cancelled || sess.found) return;
   const [other, entry] = free[Math.floor(Math.random() * free.length)];
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -2047,6 +2071,175 @@ async function tryPair(sess, myId) {
   foundMatch(sess, id, 'host');
 }
 
+// Three players: the searcher whose id sorts first picks two others at random and claims all three
+// spots in one all-or-nothing write, so nobody ends up in two matches.
+async function tryGroup(sess, myId) {
+  const q = await rtdb('GET', 'queue') || {};
+  const now = Date.now() + sess.offset;
+  const fresh = Object.entries(q).filter(([uid, e]) => uid !== myId && e && !e.match && e.v === MATCH3_VERSION && now - e.t < (SEARCH3_SECONDS + 5) * 1000);
+  if (mmSession === sess && !sess.found) $('mmText').textContent = fresh.length ? `Found ${Math.min(fresh.length, 2)} of 2 players…` : 'Looking for two other players';
+  const free = fresh.filter(([uid]) => uid > myId);
+  if (free.length < 2 || sess.cancelled || sess.found) return;
+  for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [free[i], free[j]] = [free[j], free[i]]; }
+  const group = [[myId, { name: me.name }], ...free.slice(0, 2)];
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8), claim = { id, by: myId };
+  const update = { [`matches/${id}`]: {
+    players: Object.fromEntries(group.map(([uid], i) => [KEYS[i], uid])),
+    names: Object.fromEntries(group.map(([, e], i) => [KEYS[i], safeName(e.name)])),
+    v: MATCH3_VERSION, phase: 'select', created: SERVER_TIME,
+  } };
+  for (const [uid] of group) update[`queue/${uid}/match`] = claim;
+  try { await rtdb('PATCH', '', update); } catch { return; }   // someone was taken a moment ago: look again
+  sess.found = true;
+  foundMatch(sess, id, 'host');
+}
+
+// ---------- Friend rooms: a lobby where the host starts the game ----------
+let lobby = null;             // the friend room we're in
+const seenMatches = new Set();
+const ROOM_FRESH = 15000;     // players who haven't checked in for this long have left the room
+function newRoomCode() {
+  let c = '';
+  for (let i = 0; i < 4; i++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return c;
+}
+async function shareRoom(room) {
+  const url = `https://bounceduel.se/?room=${room}`, text = `Play Bounce Duel with me! Room code: ${room}`;
+  if (navigator.share) { try { await navigator.share({ title: 'Bounce Duel', text, url }); } catch {} return; }
+  try { await navigator.clipboard.writeText(`${text} ${url}`); toast('Invite link copied'); }
+  catch { toast(`Room code: ${room}`); }
+}
+// The Play with a friend screen: make a room, or join one with a code
+function openFriendPanel() {
+  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
+  if (needsUsername) return showUsernamePicker(me.name);
+  mmShow('Play with a friend', 'Make a room and send the code to your friends, or type the code a friend sent you. 2 or 3 players.', { spin: false, button: 'Back' });
+  $('mmExtra').innerHTML = `<div class="friend-panel"><button id="roomMake">Make a room</button>
+    <div class="or">or join a room</div>
+    <form id="roomForm" class="row"><input class="grow code-input" maxlength="4" placeholder="CODE" value="${escapeHtml(pendingRoom)}" autocapitalize="characters" spellcheck="false" aria-label="Room code"><button class="ghost">Join</button></form>
+    <p class="err" id="roomErr"></p></div>`;
+  const fail = err => { if ($('roomErr')) $('roomErr').textContent = err.message; else toast(err.message); };
+  $('roomMake').onclick = e => busy(e.currentTarget, createRoom, $('roomErr'));
+  $('roomForm').onsubmit = e => { e.preventDefault(); joinRoom($('roomForm').querySelector('input').value).catch(fail); };
+}
+async function createRoom() {
+  if (!MULTIPLAYER) throw new GameError('Friend rooms work in the Bounce Duel app and on the website.');
+  for (let tries = 0; tries < 5; tries++) {
+    const code = newRoomCode();
+    try {
+      await rtdb('PUT', `rooms/${code}`, { host: auth1.uid, hb: SERVER_TIME, members: { [auth1.uid]: { name: me.name, t: SERVER_TIME, j: SERVER_TIME } } });
+      return enterLobby(code, true);
+    } catch (e) { if (e.message !== 'DENIED') throw e; }   // that code is taken: try another
+  }
+  throw new GameError("Couldn't make a room right now. Try again.");
+}
+async function joinRoom(code) {
+  code = (code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 4) throw new GameError('Room codes are 4 letters or numbers.');
+  if (!MULTIPLAYER) throw new GameError('Friend rooms work in the Bounce Duel app and on the website.');
+  if (!me) return openLogin('create', 'Log in or create an account to play with a friend.');
+  if (needsUsername) return showUsernamePicker(me.name);
+  pendingRoom = '';
+  const uid = auth1.uid, room = await rtdb('GET', `rooms/${code}`);
+  if (!room?.host) throw new GameError(`There's no room ${code}. Check the code with your friend.`);
+  if (room.host === uid) return enterLobby(code, true);
+  const others = Object.entries(room.members || {}).filter(([id, m]) => id !== uid && room.hb - (m.t || 0) < ROOM_FRESH);
+  if (others.length >= 3) throw new GameError('That room is full (3 players).');
+  await rtdb('PUT', `rooms/${code}/members/${uid}`, { name: me.name, t: SERVER_TIME, j: SERVER_TIME });
+  // The host checks in every few seconds; a room whose host is long gone is closed
+  const t = await rtdb('GET', `rooms/${code}/members/${uid}/t`);
+  if (t - room.hb > 30000) {
+    await rtdb('DELETE', `rooms/${code}/members/${uid}`).catch(() => {});
+    throw new GameError('That room has closed. Ask your friend to make a new one.');
+  }
+  enterLobby(code, false);
+}
+function enterLobby(code, isHost) {
+  closeLobby();
+  const L = lobby = { code, isHost, room: null };
+  lastRoom = { code, isHost };
+  const uid = auth1.uid;
+  L.stop = rtdbStream(`rooms/${code}`, r => { if (lobby === L) onRoom(r); }, () => { if (lobby === L) lobbyClosed('Lost the connection to the room.'); });
+  const checkIn = () => (isHost
+    ? rtdb('PATCH', `rooms/${code}`, { hb: SERVER_TIME, [`members/${uid}/t`]: SERVER_TIME, [`members/${uid}/name`]: me.name })
+    : rtdb('PATCH', `rooms/${code}/members/${uid}`, { name: me.name, t: SERVER_TIME })
+  ).catch(e => { if (lobby === L && e.message === 'DENIED') lobbyClosed('The room has closed.'); });
+  checkIn();
+  L.timer = setInterval(checkIn, 3000);
+  renderLobby();
+}
+// Players in the room right now: the host first, then in the order they joined
+function roomMembers(r) {
+  return Object.entries(r?.members || {})
+    .filter(([id, m]) => id === r.host || r.hb - (m.t || 0) < ROOM_FRESH)
+    .map(([id, m]) => ({ id, name: safeName(m.name), j: m.j || 0 }))
+    .sort((a, b) => (a.id === r.host ? -1 : b.id === r.host ? 1 : a.j - b.j)).slice(0, 3);
+}
+function onRoom(r) {
+  const L = lobby, uid = auth1.uid;
+  if (!r?.host || (L.isHost && r.host !== uid)) return lobbyClosed(L.isHost ? 'The room has closed.' : 'The host closed the room.');
+  if (!L.isHost && r.members?.[uid] && r.members[uid].t - r.hb > 30000) return lobbyClosed('The host left the room.');
+  L.room = r;
+  // The host started a game with us in it
+  const m = r.match;
+  if (!L.isHost && m?.id && !seenMatches.has(m.id) && Object.values(m.ids || {}).includes(uid)) {
+    seenMatches.add(m.id);
+    closeLobby();
+    return joinMatch(m.id, 'guest', { code: L.code, isHost: false });
+  }
+  renderLobby();
+}
+function renderLobby() {
+  const L = lobby, r = L.room, list = r ? roomMembers(r) : [];
+  mmShow('Friend room', L.isHost ? 'Send the code to your friends. Start when everyone is in (2 or 3 players).' : 'Waiting for the host to start the game…',
+    { spin: !L.isHost, button: 'Leave room', onButton: leaveLobby });
+  const rows = [0, 1, 2].map(i => {
+    const m = list[i];
+    if (!m) return `<div class="lobby-row empty"><span class="dot"></span>Waiting for a player…</div>`;
+    return `<div class="lobby-row"><span class="dot" style="background:${COLORS[i]}"></span><b>${escapeHtml(m.name)}</b>
+      ${m.id === r.host ? '<span class="tag">Host</span>' : ''}${m.id === auth1.uid ? '<span class="fine">(you)</span>' : ''}</div>`;
+  }).join('');
+  $('mmExtra').innerHTML = `<div class="room-code">${L.code}</div><button class="small ghost" id="roomShare">Send invite link</button>
+    <div class="lobby-list">${rows}</div>
+    ${L.isHost ? `<button id="roomStart" ${list.length < 2 ? 'disabled' : ''}>${list.length < 2 ? 'Waiting for players…' : `Start game (${list.length} players)`}</button>` : ''}`;
+  $('roomShare').onclick = () => shareRoom(L.code);
+  if (L.isHost) $('roomStart').onclick = e => busy(e.currentTarget, startRoomMatch);
+}
+async function startRoomMatch() {
+  const L = lobby, list = roomMembers(L.room);
+  if (!L?.isHost || list.length < 2) return;
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const ids = Object.fromEntries(list.map((m, i) => [KEYS[i], m.id]));
+  await rtdb('PATCH', '', {
+    [`matches/${id}`]: { players: ids, names: Object.fromEntries(list.map((m, i) => [KEYS[i], m.name])),
+      v: list.length === 3 ? MATCH3_VERSION : MATCH_VERSION, phase: 'select', created: SERVER_TIME },
+    [`rooms/${L.code}/match`]: { id, ids },
+  });
+  seenMatches.add(id);
+  closeLobby();
+  joinMatch(id, 'host', { code: L.code, isHost: true });
+}
+function closeLobby() {
+  const L = lobby;
+  if (!L) return;
+  lobby = null;
+  L.stop?.(); clearInterval(L.timer);
+}
+function leaveLobby() {
+  const L = lobby;
+  if (!L) return show('app');
+  closeLobby();
+  rtdb('DELETE', L.isHost ? `rooms/${L.code}` : `rooms/${L.code}/members/${auth1.uid}`).catch(() => {});
+  lastRoom = null;
+  toast('You left the room');
+  show('app');
+}
+function lobbyClosed(msg) {
+  closeLobby();
+  lastRoom = null;
+  mmShow('Room closed', msg, { spin: false, button: 'Back to menu' });
+}
+
 function stopSearch(sess) {
   sess.cancelled = true;
   clearInterval(sess.timer);
@@ -2058,21 +2251,23 @@ function cancelMatchmaking(msg) {
   const sess = mmSession;
   if (!sess) return;
   stopSearch(sess);
-  if (!msg) { toast(sess.room ? 'Left the room' : 'Matchmaking cancelled'); return show('app'); }
-  mmShow(sess.room ? 'Nobody joined' : 'No match found', msg, { spin: false, button: 'Back to menu' });
+  if (!msg) { toast('Matchmaking cancelled'); return show('app'); }
+  mmShow('No match found', msg, { spin: false, button: 'Back to menu' });
 }
 function foundMatch(sess, id, role) {
   stopSearch(sess);
-  mmShow('Player found!', 'Getting ready…', { spin: true, button: 'Leave', onButton: () => leaveOnline('You left the match.') });
+  mmShow(sess.size === 3 ? 'Players found!' : 'Player found!', 'Getting ready…', { spin: true, button: 'Leave', onButton: () => leaveOnline('You left the match.') });
   joinMatch(id, role);
 }
 
-function joinMatch(id, role) {
+// room: the friend room this match was started from ({ code, isHost }), to go back to afterwards
+function joinMatch(id, role, room = null) {
   online = {
-    id, role, myIdx: role === 'host' ? 0 : 1, myId: auth1.uid, oppId: null, oppName: 'your opponent',
+    id, role, room, n: 2, ids: [], others: [], myIdx: role === 'host' ? 0 : 1, myId: auth1.uid, oppId: null, oppName: 'your opponent',
     mirror: null, phase: 'select', joinedAt: Date.now(), phaseAt: Date.now(), ready: false, placed: false,
-    presses: 0, seenPresses: 0, snaps: [], renderT: 0, lastSend: 0, inFlight: 0, gap: 0.1, lastArrival: 0, timers: [],
+    presses: 0, seenPresses: {}, snaps: [], renderT: 0, lastSend: 0, inFlight: 0, gap: 0.1, lastArrival: 0, timers: [],
   };
+  lastRoom = room; lastSize = 2;
   mode = 'online'; isEvent = false; matchName = ''; renaming = false;
   mods = { ...BASE_MODS }; resize();
   const o = online;
@@ -2099,11 +2294,10 @@ function setReady() {
   renderSetup();
 }
 function onlineVsCard() {
-  const opp = online.mirror?.p?.[online.oppId];
-  const left = Math.max(0, Math.ceil(SELECT_SECONDS - (Date.now() - online.joinedAt) / 1000));
-  const status = opp?.ready ? '<span class="ok">Ready ✓</span>' : opp ? 'Choosing…' : 'Joining…';
-  return `<div class="vs-card"><div class="who"><span class="fine">You're playing against</span><b>${escapeHtml(online.oppName)}</b>
-    <span class="fine">${status}</span></div><div class="clock">${left}</div></div>`;
+  const o = online, left = Math.max(0, Math.ceil(SELECT_SECONDS - (Date.now() - o.joinedAt) / 1000));
+  const status = id => { const q = o.mirror?.p?.[id]; return q?.ready ? '<span class="ok">Ready ✓</span>' : q ? 'Choosing…' : 'Joining…'; };
+  const who = (o.others.length ? o.others : [null]).map(id => `<div><b>${escapeHtml(id ? o.nameOf(id) : o.oppName)}</b> <span class="fine">${id ? status(id) : 'Joining…'}</span></div>`).join('');
+  return `<div class="vs-card"><div class="who"><span class="fine">You're playing against</span>${who}</div><div class="clock">${left}</div></div>`;
 }
 
 // A choice from the other phone: only accept known skins, spikes and powers
@@ -2120,13 +2314,24 @@ function onMatchData(m) {
   const o = online;
   o.mirror = m;
   if (!m) { if (o.phase !== 'over') leaveOnline('The match was closed.', true); return; }
-  o.oppId = o.role === 'host' ? m.players?.b : m.players?.a;
-  const opp = m.p?.[o.oppId];
-  if (opp?.name) o.oppName = safeName(opp.name);
-  else if (m.names) o.oppName = safeName(o.role === 'host' ? m.names.b : m.names.a);
+  const ids = KEYS.map(k => m.players?.[k]).filter(Boolean);
+  if (ids.length) {
+    o.ids = ids; o.n = ids.length; o.myIdx = ids.indexOf(o.myId);
+    o.others = ids.filter(x => x !== o.myId); o.oppId = o.others[0];
+  }
+  o.nameOf = uid => safeName(m.p?.[uid]?.name || m.names?.[KEYS[o.ids.indexOf(uid)]]);
+  if (o.oppId) o.oppName = o.n === 3 ? 'the others' : o.nameOf(o.oppId);
   if (m.phase === 'cancelled') {
-    if (o.phase !== 'over') leaveOnline(m.leftBy === o.myId ? 'You left the match.' : `${o.oppName} left the match.`, true);
+    if (o.phase !== 'over') leaveOnline(m.leftBy === o.myId ? 'You left the match.' : `${o.nameOf(m.leftBy)} left the match.`, true);
     return;
+  }
+  // Three players: someone was knocked out (or left); the first one out saves their 3rd place right away
+  if (o.n === 3 && m.ko) {
+    for (const [uid, k] of Object.entries(m.ko)) {
+      const q = players[o.ids.indexOf(uid)];
+      if (q && !q.out && k.place > 1 && o.role === 'guest') { q.out = true; q.place = k.place; q.hp = 0; burst(q.x, q.y, q.color, 24); updateHint(); }
+    }
+    if (m.ko[o.myId] && !o.saving) o.saving = saveThree(o, m.ko[o.myId]);
   }
   if (m.phase !== o.phase) { o.phase = m.phase; o.phaseAt = Date.now(); onPhase(m); }
   if (!online) return;
@@ -2139,8 +2344,7 @@ function onMatchData(m) {
 function onPhase(m) {
   const o = online;
   if (m.phase === 'place') {
-    const ids = [m.players.a, m.players.b];
-    players = ids.map((id, i) => makePlayer(i, safeName(m.p?.[id]?.name), safeLoadout(m.p?.[id]), false));
+    players = o.ids.map((id, i) => makePlayer(i, o.nameOf(id), safeLoadout(m.p?.[id]), false));
     particles = []; popups = []; elapsed = 0; aimPress = false; shake = 0;
     placing = o.myIdx; state = 'place';
     screens.forEach(x => $(x).classList.add('hidden'));
@@ -2150,8 +2354,9 @@ function onPhase(m) {
     updateHint();
   }
   if (m.phase === 'go' && m.start) {
-    ['a', 'b'].forEach((k, i) => {
+    KEYS.slice(0, players.length).forEach((k, i) => {
       const q = m.start[k], p = players[i];
+      if (!q) return;
       p.x = AX + q.x * AS; p.y = AY + q.y * AS; p.placed = true;
       launch(p, q.dx, q.dy);
     });
@@ -2163,27 +2368,40 @@ function onPhase(m) {
 
 // Things only the host decides: when to move on, where the cubes start, the guest's power presses
 function hostCheck(m) {
-  const o = online, mine = m.p?.[o.myId], theirs = m.p?.[o.oppId];
-  if (m.phase === 'select' && mine?.ready && theirs?.ready && !o.sentPlace) {
+  const o = online, all = o.ids.map(id => m.p?.[id]);
+  if (!o.ids.length) return;
+  if (m.phase === 'select' && all.every(q => q?.ready) && !o.sentPlace) {
     o.sentPlace = true;
     rtdb('PATCH', `matches/${o.id}`, { phase: 'place' }).catch(() => {});
   }
-  if (m.phase === 'place' && mine?.place && theirs?.place && !o.sentStart) { o.sentStart = true; hostStart(mine.place, theirs.place); }
-  if (m.phase === 'go' && state === 'play' && theirs) {
-    const n = Number(theirs.presses) || 0;
-    while (o.seenPresses < n) { o.seenPresses++; usePower(players[1]); }
+  if (m.phase === 'place' && all.every(q => q?.place) && !o.sentStart) { o.sentStart = true; hostStart(all.map(q => q.place)); }
+  if (m.phase === 'go' && state === 'play') {
+    o.ids.forEach((id, i) => {
+      if (i === o.myIdx || !all[i]) return;
+      const n = Number(all[i].presses) || 0;
+      o.seenPresses[id] = o.seenPresses[id] || 0;
+      while (o.seenPresses[id] < n) { o.seenPresses[id]++; usePower(players[i]); }
+      // Three players: someone who leaves is knocked out and the others play on
+      if (all[i].left && players[i] && !players[i].out) players[i].hp = 0;
+    });
   }
 }
-function hostStart(pa, pb) {
+function hostStart(list) {
   const s = 64 / 600, lo = s / 2 + 0.005, hi = 1 - s / 2 - 0.005;   // cube size in room units
   const fix = q => {
     const dx = Number(q?.dx) || 1, dy = Number(q?.dy) || 1;
     return { x: Math.min(hi, Math.max(lo, Number(q?.x) || 0.5)), y: Math.min(hi, Math.max(lo, Number(q?.y) || 0.5)), dx, dy };
   };
-  const A = fix(pa), B = fix(pb);
-  // Both picked almost the same spot: slide the guest's cube away
-  if (Math.abs(A.x - B.x) < s * 1.3 && Math.abs(A.y - B.y) < s * 1.3) B.x = A.x < 0.5 ? Math.min(hi, A.x + 0.35) : Math.max(lo, A.x - 0.35);
-  rtdb('PATCH', `matches/${online.id}`, { phase: 'go', start: { a: A, b: B } }).catch(() => {});
+  const spots = list.map(fix);
+  // Two picked almost the same spot: slide the later one away
+  for (let j = 1; j < spots.length; j++) {
+    for (let tries = 0; tries < 8 && spots.slice(0, j).some(A => Math.abs(A.x - spots[j].x) < s * 1.3 && Math.abs(A.y - spots[j].y) < s * 1.3); tries++) {
+      const B = spots[j];
+      if (tries === 0) B.x = B.x < 0.5 ? Math.min(hi, B.x + 0.35) : Math.max(lo, B.x - 0.35);
+      else { B.x = lo + Math.random() * (hi - lo); B.y = lo + Math.random() * (hi - lo); }
+    }
+  }
+  rtdb('PATCH', `matches/${online.id}`, { phase: 'go', start: Object.fromEntries(spots.map((p, i) => [KEYS[i], p])) }).catch(() => {});
 }
 
 function checkOnline() {
@@ -2200,9 +2418,20 @@ function checkOnline() {
     updateHint();
   }
   // Heartbeats are server times, so compare theirs with ours
-  const mine = m?.p?.[o.myId]?.hb, theirs = m?.p?.[o.oppId]?.hb;
-  if (!theirs && now - o.joinedAt > 15000) return leaveOnline(`${o.oppName === 'your opponent' ? 'The other player' : o.oppName} didn't join.`);
-  if (mine && theirs && mine - theirs > 10000 && o.phase !== 'over') return leaveOnline(`${o.oppName} lost connection.`);
+  const mine = m?.p?.[o.myId]?.hb;
+  for (const id of o.others.length ? o.others : [null]) {
+    const theirs = id && m?.p?.[id]?.hb, name = id ? o.nameOf(id) : 'The other player';
+    if (!theirs && now - o.joinedAt > 15000) return leaveOnline(`${name} didn't join.`);
+    if (!(mine && theirs && mine - theirs > 10000) || o.phase === 'over') continue;
+    // Three players mid-match: a dropped guest is knocked out; only losing the host ends the match
+    if (o.n === 3 && o.phase === 'go') {
+      const q = players[o.ids.indexOf(id)];
+      if (o.role === 'host' && q && !q.out) q.hp = 0;
+      if (o.role === 'guest' && id === o.ids[0]) return leaveOnline(`${name} lost connection.`);
+      continue;
+    }
+    return leaveOnline(`${name} lost connection.`);
+  }
 }
 
 function onlinePlaced(p) {
@@ -2255,6 +2484,92 @@ function hostFinish(winner) {
   setTimeout(() => rtdb('DELETE', `matches/${id}`).catch(() => {}), 30000);
 }
 
+// ---------- Three players: knock-outs and places ----------
+// Score, like two-player, depends on HP: 1st gains the HP they have left, 2nd gains a tenth of the HP
+// they had when 3rd went out, and 3rd loses the average HP the other two had at that moment.
+function threeDelta(p) {
+  if (p.place === 1) return Math.max(1, p.hp);
+  if (p.place === 2) return Math.round((p.hpAtFirstOut ?? 0) / 10);
+  const hp = p.othersHp || [];
+  return -Math.round(hp.reduce((s, v) => s + v, 0) / Math.max(1, hp.length));
+}
+// Host: tell everyone who's out. The first one out (3rd) can save their result straight away.
+function onlineKnockOut(dead) {
+  const o = online;
+  if (o.role !== 'host') return;
+  const ko = {};
+  for (const p of dead) if (p.place === 3) ko[o.ids[p.i]] = { place: 3, delta: threeDelta(p) };
+  if (Object.keys(ko).length) rtdb('PATCH', `matches/${o.id}/ko`, ko).catch(() => {});
+  if (ko[o.myId] && !o.saving) o.saving = saveThree(o, ko[o.myId]);
+}
+function endMatch3() {
+  state = 'over';
+  if (!online) return;
+  const o = online, ko = {};
+  players.forEach((p, i) => { ko[o.ids[i]] = { place: p.place || 1, delta: threeDelta(p) }; });
+  const winner = players.find(p => p.place === 1);
+  const result = { ko, hp: winner ? winner.hp : 0, dealt: players.map(q => q.dealt), powers: players.map(q => q.powersUsed) };
+  rtdb('PATCH', `matches/${o.id}`, { state: packState(), result, phase: 'over', ko }).catch(() => {});
+  onlineResult(result);
+  const id = o.id;
+  setTimeout(() => rtdb('DELETE', `matches/${id}`).catch(() => {}), 30000);
+}
+// Save coins, score and challenge progress for a three-player match. Returns the lines for the result screen.
+async function saveThree(o, entry) {
+  const coins = [0, 15, 10, 5][entry.place] || 5, p = players[o.myIdx], lines = [];
+  try {
+    const challenges = dailyChallenges(), before = me.score;
+    let done = [];
+    await mutateUser(auth1, d => {
+      rollDaily(d);
+      d.coins += coins;
+      d.score = Math.max(0, d.score + entry.delta);
+      if (entry.place === 1) d.wins2p++;
+      if (entry.place === 3) d.losses2p++;
+      const was = {};
+      for (const c of challenges) was[c.id] = (d.daily.progress[c.metric] || 0) >= c.target;
+      const stats = { play: 1, damage: p?.dealt || 0, power: p?.powersUsed || 0 };
+      if (entry.place === 1) stats.win2p = 1;
+      for (const [k, v] of Object.entries(stats)) if (challenges.some(c => c.metric === k)) d.daily.progress[k] = (d.daily.progress[k] || 0) + v;
+      done = challenges.filter(c => !was[c.id] && (d.daily.progress[c.metric] || 0) >= c.target);
+    });
+    const diff = me.score - before;
+    lines.push(`<div class="line"><span class="up">+${coins}</span> ${coinHtml('')} coins</div>`);
+    lines.push(`<div class="line">Score ${before} → <b>${me.score}</b> <span class="${diff >= 0 ? 'up' : 'down'}">(${diff >= 0 ? '+' : ''}${diff})</span></div>`);
+    const r0 = rankOf(before), r1 = rankOf(me.score);
+    if (r1.at > r0.at) lines.push(`<div class="line"><b style="color:${r1.color}">Ranked up to ${r1.name}!</b></div>`);
+    else if (r1.at < r0.at) lines.push(`<div class="line down">Dropped to ${r1.name}</div>`);
+    done.forEach(c => lines.push(`<div class="line">Challenge done! “${escapeHtml(c.text)}”. Claim ${coinHtml(c.reward)} in Events.</div>`));
+  } catch (e) {
+    lines.push(`<div class="line down">Couldn't save this match. ${escapeHtml(e.message)}</div>`);
+  }
+  return lines;
+}
+async function showResult3(o, result) {
+  const mine = players[o.myIdx], entry = result.ko[o.myId] || { place: mine.place || 3, delta: 0 };
+  const medal = ['', '#facc15', '#cbd5e1', '#d08b4f'][entry.place];
+  const winner = players.find(q => q.place === 1);
+  $('quitBtn').classList.add('hidden');
+  koT = 1.3; koText = entry.place === 1 ? 'WIN!' : 'K.O.!'; koColor = winner ? winner.color : '#888'; shake = 14;
+  if (winner) { burst(winner.x, winner.y, winner.color, 28); burst(winner.x, winner.y, '#fff', 16); }
+  const text = $('winText');
+  text.textContent = entry.place === 1 ? 'You win! 1st place' : `${ordinal(entry.place)} place`;
+  text.style.color = medal;
+  [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.15, 'square', 0.04), i * 110));
+  native({ type: 'awake', on: false });
+  buzz(entry.place === 1 ? 'success' : 'error');
+  $('againBtn').textContent = o.room ? 'Back to room' : 'Play again';
+  $('againBtn').disabled = true;
+  const results = $('results');
+  const standings = [...players].sort((a, b) => a.place - b.place).map(q =>
+    `<div class="line"><b style="color:${['', '#facc15', '#cbd5e1', '#d08b4f'][q.place]}">${ordinal(q.place)}</b> ${escapeHtml(q.name)}${q === mine ? ' (you)' : ''}${q.place === 1 ? ` · ${q.hp} HP left` : ''}</div>`).join('');
+  results.innerHTML = standings + '<div class="fine">Saving…</div>';
+  setTimeout(() => { if (state === 'over') screens.forEach(x => $(x).classList.toggle('hidden', x !== 'over')); }, 1300);
+  const lines = await (o.saving || saveThree(o, entry));
+  if (state === 'over') results.innerHTML = standings + lines.join('');
+  $('againBtn').disabled = false;
+}
+
 // ---------- Guest: show the match ----------
 function guestSnapshot(st) {
   const o = online, snaps = o.snaps;
@@ -2271,8 +2586,9 @@ function guestSnapshot(st) {
     const was = prev.p[i], now = st.p[i];
     if (now[5] < was[5]) {
       q.flash = 0.15; shake = Math.min(8, shake + 1.5);
-      burst(q.x, q.y, players[1 - i].color, 4);
-      for (let k = 0; k < was[5] - now[5]; k++) hitFx(q, q.x, q.y, players[1 - i].color);
+      const by = players.find(x => x !== q && !x.out)?.color || '#fff';
+      burst(q.x, q.y, by, 4);
+      for (let k = 0; k < was[5] - now[5]; k++) hitFx(q, q.x, q.y, by);
       if (q === myPlayer()) buzz('light');
       if (clock - lastHitSound > 0.06) { lastHitSound = clock; sfx(120 + Math.random() * 60, 0.06, 'square', 0.035); }
     }
@@ -2310,7 +2626,7 @@ function guestTick(dt) {
 }
 function sendPower() {
   const o = online, p = myPlayer();
-  if (state !== 'play' || p.powerCd > 0 || p.frozen > 0) return;
+  if (state !== 'play' || p.out || p.powerCd > 0 || p.frozen > 0) return;
   o.presses++;
   rtdb('PATCH', `matches/${o.id}/p/${o.myId}`, { presses: o.presses }).catch(() => {});
 }
@@ -2320,6 +2636,16 @@ function onlineResult(result) {
   if (!o || o.resultShown) return;
   o.resultShown = true;
   state = 'over';
+  if (result.ko) {
+    players.forEach((q, i) => {
+      const k = result.ko[o.ids[i]];
+      if (k) { q.place = k.place; q.out = k.place > 1; }
+      q.dealt = Number(result.dealt?.[i]) || q.dealt;
+      if (q.place === 1) q.hp = Math.max(1, Number(result.hp) || q.hp);
+    });
+    closeOnline();
+    return showResult3(o, result);
+  }
   // Use the host's final numbers on both phones
   const winner = result.winner === 'draw' ? null : players[result.winner === (o.role === 'host' ? o.myId : o.oppId) ? 0 : 1];
   players.forEach((q, i) => {
@@ -2342,14 +2668,22 @@ function leaveOnline(msg, fromServer = false) {
   const o = online;
   if (!o) return;
   closeOnline();
-  if (!fromServer) rtdb('PATCH', `matches/${o.id}`, { phase: 'cancelled', leftBy: o.myId }).catch(() => {});
+  // Three players mid-match: a guest who leaves is knocked out and the other two play on
+  const three = o.n === 3 && o.phase === 'go' && o.role === 'guest';
+  if (!fromServer) rtdb('PATCH', three ? `matches/${o.id}/p/${o.myId}` : `matches/${o.id}`, three ? { left: true } : { phase: 'cancelled', leftBy: o.myId }).catch(() => {});
+  const myPlace = players[o.myIdx]?.place;
+  // Leaving a match from a friend room also leaves the room (the host closes it)
+  if (o.room && !fromServer) {
+    rtdb('DELETE', o.room.isHost ? `rooms/${o.room.code}` : `rooms/${o.room.code}/members/${o.myId}`).catch(() => {});
+    lastRoom = null;
+  }
   mods = { ...BASE_MODS }; resize();
   state = 'menu'; players = [];
   native({ type: 'awake', on: false });
   $('quitBtn').classList.add('hidden');
   updateHint();
   mode = '1p';
-  mmShow('Match ended', `${msg} No points were won or lost.`, { spin: false, button: 'Back to menu' });
+  mmShow('Match ended', o.saving ? `${msg} Your ${ordinal(myPlace || 3)} place was saved.` : `${msg} No points were won or lost.`, { spin: false, button: 'Back to menu' });
 }
 
 // ============================================================================
@@ -2401,7 +2735,7 @@ async function showResult(winner, mine, oppName) {
   [523, 659, 784].forEach((f, i) => setTimeout(() => sfx(f, 0.15, 'square', 0.04), i * 110));
   native({ type: 'awake', on: false });
   buzz(won || !winner ? 'success' : 'error');
-  $('againBtn').textContent = mode === 'online' ? (lastRoom ? 'Rematch' : 'Play again') : 'Rematch';
+  $('againBtn').textContent = mode === 'online' ? (lastRoom ? 'Back to room' : 'Play again') : 'Rematch';
   const results = $('results');
   results.innerHTML = me ? '<div class="fine">Saving…</div>' : '';
   $('againBtn').disabled = true;
@@ -2657,36 +2991,45 @@ function fitText(text, width, keep = '') {
 }
 
 function drawHud() {
-  const bw = Math.min(320, W / 2 - 40);
+  const n = players.length, bw = n === 3 ? Math.min(240, (W - 64) / 3) : Math.min(320, W / 2 - 40);
   const top = 12 + safeTop;
   players.forEach((p, i) => {
-    const x = i === 0 ? 16 : W - 16 - bw;
-    ctx.fillStyle = '#222'; ctx.fillRect(x, top, bw, 22);
+    // Two players: left and right. Three: left, middle (a bit lower, under the ✕ button) and right.
+    const x = i === 0 ? 16 : i === n - 1 ? W - 16 - bw : (W - bw) / 2;
+    const top2 = n === 3 && i === 1 ? top + 44 : top;
+    const rightSide = i === n - 1 && n > 1;
+    const base = p.out ? 0.45 : 1, fromRight = rightSide;
+    ctx.globalAlpha = base;
+    ctx.fillStyle = '#222'; ctx.fillRect(x, top2, bw, 22);
     const w = bw * p.hp / p.maxHp, lag = bw * Math.max(p.hp, p.hpLag) / p.maxHp;
     ctx.fillStyle = 'rgba(255,255,255,.75)';
-    ctx.fillRect(i === 0 ? x : x + bw - lag, top, lag, 22);
+    ctx.fillRect(fromRight ? x + bw - lag : x, top2, lag, 22);
     const low = p.hp > 0 && p.hp / p.maxHp < 0.25;
-    ctx.globalAlpha = low ? 0.65 + 0.35 * Math.sin(clock * 10) : 1;
+    ctx.globalAlpha = base * (low ? 0.65 + 0.35 * Math.sin(clock * 10) : 1);
     ctx.fillStyle = p.color;
-    ctx.fillRect(i === 0 ? x : x + bw - w, top, w, 22);
-    ctx.globalAlpha = 1;
+    ctx.fillRect(fromRight ? x + bw - w : x, top2, w, 22);
+    ctx.globalAlpha = base;
     ctx.fillStyle = '#fff';
     ctx.font = 'bold 13px system-ui, sans-serif';
     ctx.textBaseline = 'middle';
-    ctx.textAlign = i === 0 ? 'left' : 'right';
-    ctx.fillText(fitText(`${p.name}  ${p.hp}`, bw - 12, `  ${p.hp}`), i === 0 ? x + 6 : x + bw - 6, top + 11);
+    ctx.textAlign = fromRight ? 'right' : 'left';
+    const tail = p.out ? `  OUT · ${ordinal(p.place)}` : `  ${p.hp}`;
+    ctx.fillText(fitText(`${p.name}${tail}`, bw - 12, tail), fromRight ? x + bw - 6 : x + 6, top2 + 11);
+    ctx.globalAlpha = 1;
   });
 }
 
 const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
 function drawPowerButtons() {
-  [myIdx(), 1 - myIdx()].forEach((pi, i) => {
+  const order = [myIdx(), ...players.map((q, k) => k).filter(k => k !== myIdx())];
+  order.forEach((pi, i) => {
     const p = players[pi], def = POWERS[p.power];
+    if (p.out) return;
     const ready = p.powerCd <= 0 && p.frozen <= 0;
-    // Yours is a big button; the other player's is a small read-only indicator in the corner
-    const big = buttons[i], mine = i === 0;
+    // Yours is a big button; the others' are small read-only indicators in the corner
+    const big = buttons[Math.min(i, 1)], mine = i === 0;
     const r = mine ? big.r : big.r * 0.6;
-    const b = { x: mine ? big.x : big.x + big.r - r, y: big.y + big.r - r, r };
+    const b = { x: mine ? big.x : big.x + big.r - r - (i - 1) * r * 2.6, y: big.y + big.r - r, r };
     ctx.save();
     ctx.globalAlpha = mine ? 1 : 0.6;
     ctx.fillStyle = '#121216';
@@ -2706,7 +3049,7 @@ function drawPowerButtons() {
       ctx.fillText(Math.ceil(Math.max(p.powerCd / mods.powerRate, p.frozen)) + 's', b.x, b.y + b.r * 0.28);
     }
     ctx.fillStyle = p.color; ctx.font = 'bold 11px system-ui, sans-serif';
-    const label = i === 1 ? (online ? 'Their power' : 'CPU power') : coarse ? 'Your power' : 'Your power · A / Space';
+    const label = !mine ? (players.length === 3 ? fitText(p.name, r * 2.4) : online ? 'Their power' : 'CPU power') : coarse ? 'Your power' : 'Your power · A / Space';
     if (label) ctx.fillText(label, b.x, b.y - b.r - 10);
     ctx.restore();
   });
@@ -2815,8 +3158,8 @@ function draw() {
   }
   ctx.globalAlpha = 1; ctx.lineWidth = 1;
 
-  for (const p of players) if (p.placed) drawSpikes(ctx, p);
-  for (const p of players) if (p.placed) drawCube(p);
+  for (const p of players) if (p.placed && !p.out) drawSpikes(ctx, p);
+  for (const p of players) if (p.placed && !p.out) drawCube(p);
 
   if (state === 'place') {
     const pos = clampPos(mouse.x, mouse.y);
@@ -3605,7 +3948,7 @@ restoreSession().then(() => {
   if (!$('app').classList.contains('hidden')) renderApp();
   // Opened from a friend's invite link
   if (pendingRoom) {
-    if (me && !needsUsername) { try { joinRoom(pendingRoom); } catch (e) { toast(e.message); } }
+    if (me && !needsUsername) joinRoom(pendingRoom).catch(e => toast(e.message));
     else if (!needsUsername && ONLINE) toast(`Log in, then tap Play with a friend to join room ${pendingRoom}`);
   }
 });

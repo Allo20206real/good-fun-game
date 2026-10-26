@@ -8,7 +8,8 @@ The app has five tabs: **Play**, **Events**, **Shop**, **Groups** and **Profile*
 
 - **Single player**: play against a CPU cube (Easy, Normal or Hard). The CPU picks a random skin, spike and power each match.
 - **Two players**: two people on the same device. Player 2 can sign in to their own account on the setup screen.
-- **Play with a friend**: tap the small button on the Play tab, then make a room and send the 4-letter code (or the invite link) to a friend. You're matched only with each other, and Rematch keeps you in the same room.
+- **Three players**: online matchmaking puts three random players together. Cubes at 0 HP are knocked out and watch the rest; the last cube left wins. Score: 1st gains the HP they have left, 2nd gains a tenth of the HP they had when 3rd went out, and 3rd loses the average HP the other two had at that moment.
+- **Play with a friend**: tap the small button on the Play tab, then make a room and send the 4-letter code (or the invite link). Up to 3 people can join; the host sees who's in and starts the game (2 or 3 players). After the match, everyone can go back to the room.
 - **Event match**: single player with this week's special rules and 50% more coins.
 - **The Tower**: a 2D climb up a tower with 15 stages and 100 HP, each a new color and harder than the last (moving, crumbling, blinking, icy and spiked platforms, bounce pads, elevators and conveyor belts). No powers and no checkpoints. Move with ◀ ▶ (arrow keys or A/D on a computer) and tap to jump (Space, ↑ or W).
 
