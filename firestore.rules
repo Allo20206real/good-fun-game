@@ -37,17 +37,27 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/towerBest/$(string(b.prize))).data.uid == request.auth.uid;
     }
 
-    // Gambler event: 8 days from 26 October 2026 (UTC). One boss win a day; 7 wins unlock the Gambler cube.
+    // Gambler event: 8 days from 26 October 2026 (UTC). One win a day against the normal boss ('days')
+    // and one against the Extreme boss ('xdays'). 7 normal wins unlock the Gambler cube; 7 days with
+    // both unlock the Awakened Gambler.
     function gDay() {
       return int(math.floor((request.time.toMillis() - 1792972800000) / 86400000.0));
     }
     function gb(d) {
       return d.get('gambler', {'days': []});
     }
+    // Today's win added to list k, and nothing else changed
+    function gWin(a, b, k, other) {
+      return b.get(k, []).size() == a.get(k, []).size() + 1
+        && b.get(k, []).hasAll(a.get(k, [])) && b.get(k, []).hasAny([gDay()]) && !a.get(k, []).hasAny([gDay()])
+        && b.get(other, []) == a.get(other, []);
+    }
     function bossWin(a, b) {
-      return gDay() >= 0 && gDay() < 8
-        && b.keys().hasOnly(['days']) && b.days.size() == a.days.size() + 1
-        && b.days.hasAll(a.days) && b.days.hasAny([gDay()]) && !a.days.hasAny([gDay()]);
+      return gDay() >= 0 && gDay() < 8 && b.keys().hasOnly(['days', 'xdays'])
+        && (gWin(a, b, 'days', 'xdays') || gWin(a, b, 'xdays', 'days'));
+    }
+    function bothDays(g) {
+      return g.get('days', []).toSet().intersection(g.get('xdays', []).toSet()).size();
     }
 
     function validUser(d) {
@@ -61,7 +71,8 @@ service cloud.firestore {
         && d.daily is map && d.streak is map
         && tw(d).keys().hasOnly(['week', 'cleared', 'prize'])
         && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int
-        && gb(d).days is list && gb(d).days.size() <= 8;
+        && gb(d).days is list && gb(d).days.size() <= 8
+        && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8;
     }
 
     // Player accounts. Anyone signed in can read them (for leaderboards); only the owner can change theirs.
@@ -75,7 +86,7 @@ service cloud.firestore {
         && request.resource.data.coins == 50
         && request.resource.data.skins.size() == 2
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
-        && gb(request.resource.data).days.size() == 0;
+        && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0;
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -94,17 +105,23 @@ service cloud.firestore {
         && (request.resource.data.coins - resource.data.coins <= 300
             || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
             || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data))))
-        // A new skin has to be paid for, except the prize skins: Champion (Tower prize) and Gambler (7 boss wins)
+        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler and Awakened Gambler
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && !('champion' in request.resource.data.skins && !('champion' in resource.data.skins))
                 && !('gambler' in request.resource.data.skins && !('gambler' in resource.data.skins))
+                && !('gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins))
                 && resource.data.coins - request.resource.data.coins >= 50)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
-                && 'gambler' in request.resource.data.skins
+                && 'gambler' in request.resource.data.skins && !('gambler' in resource.data.skins)
                 && bossWin(gb(resource.data), gb(request.resource.data))
                 && gb(request.resource.data).days.size() >= 7)
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && 'gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins)
+                && bossWin(gb(resource.data), gb(request.resource.data))
+                && bothDays(gb(request.resource.data)) >= 7)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
                 && 'champion' in request.resource.data.skins
