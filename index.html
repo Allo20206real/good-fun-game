@@ -953,6 +953,7 @@ const screens = ['app', 'setup', 'over', 'mm'];
 function show(name) {
   screens.forEach(s => $(s).classList.toggle('hidden', s !== name));
   if (name !== 'over') { state = 'menu'; players = []; tower = null; towerPtrs.clear(); }
+  towerSetup = false;   // only openTower() shows the Tower on the setup screen
   native({ type: 'awake', on: false });
   $('quitBtn').classList.add('hidden');
   if (name === 'app') renderApp();
@@ -2873,8 +2874,9 @@ let towerLbCache = null;
 const towerPtrs = new Map(); // touch pointers: L, R or J
 
 function openTower() {
-  towerSetup = true; matchName = ''; renaming = false;
+  matchName = ''; renaming = false;
   show('setup');
+  towerSetup = true;
   renderTowerSetup();
 }
 function renderTowerSetup() {
