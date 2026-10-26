@@ -93,7 +93,7 @@ Under **Grow users → Store presence → Main store listing**:
 > • Pick your spike: Classic, Twin, Saw, Lance or Comet
 > • Pick your power: Dash, Shield, Freeze, Rage, Heal or Blink, and use it at the right moment
 > • Earn coins from matches, daily rewards and daily challenges
-> • Unlock skins like Neon, Lava, Gold, Galaxy and Rainbow in the shop
+> • Unlock skins like Neon, Lava, Gold, Galaxy, Rainbow and the 15000-coin Moai in the shop
 > • A new event every week with special rules, like Giant Spikes and Sudden Death
 > • Make a group with your friends and climb the leaderboard
 >
