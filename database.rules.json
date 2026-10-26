@@ -8,6 +8,7 @@
         "t": { ".validate": "newData.isNumber() && (newData.val() === now || newData.val() === data.val())" },
         "v": { ".validate": "newData.isNumber()" },
         "name": { ".validate": "newData.isString() && newData.val().length <= 16" },
+        "room": { ".validate": "newData.isString() && newData.val().matches(/^[A-Z0-9]{4}$/)" },
         "match": {
           ".write": "auth != null && ((!data.exists() && newData.child('by').val() === auth.uid) || (!newData.exists() && data.child('by').val() === auth.uid))",
           ".validate": "newData.hasChildren(['id', 'by'])",

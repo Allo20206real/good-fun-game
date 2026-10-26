@@ -8,6 +8,7 @@ The app has five tabs: **Play**, **Events**, **Shop**, **Groups** and **Profile*
 
 - **Single player**: play against a CPU cube (Easy, Normal or Hard). The CPU picks a random skin, spike and power each match.
 - **Two players**: two people on the same device. Player 2 can sign in to their own account on the setup screen.
+- **Play a friend**: make a room and send the 4-letter code (or the invite link) to a friend. You're matched only with each other, and Rematch keeps you in the same room.
 - **Event match**: single player with this week's special rules and 50% more coins.
 - **The Tower**: a 2D climb up a tower with 15 stages and 100 HP, each a new color and harder than the last (moving, crumbling, blinking, icy and spiked platforms, bounce pads, elevators and conveyor belts). No powers and no checkpoints. Move with ◀ ▶ (arrow keys or A/D on a computer) and tap to jump (Space, ↑ or W).
 
@@ -75,6 +76,7 @@ Create an account with just an email and password on the **Profile** tab, then l
 
 - Every account starts with a score of **100** and **50 coins**.
 - When a two-player match ends, the winner **gains** points equal to the HP they have left and the loser **loses** the same amount. Lose to someone on 35 HP and you lose 35; lose without damaging them at all and you lose 100. The score can't go below 0.
+- Your score gives you a rank: Bronze (0), Silver (150), Gold (300), Platinum (500), Diamond (800) and Legend (1200), shown next to names on every leaderboard.
 - Beating the CPU adds score too: **+3** on Easy, **+6** on Normal and **+10** on Hard, so one Hard win counts for more than three Easy wins. Losing to the CPU takes no score away.
 
 Accounts are stored in the `bounce-duel` Firebase project (see [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for how it's set up). The security rules in `firestore.rules` stop players from changing other people's accounts, giving themselves large amounts of coins or score, or taking skins without paying.
