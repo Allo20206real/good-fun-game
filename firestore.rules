@@ -60,8 +60,22 @@ service cloud.firestore {
       return g.get('days', []).toSet().intersection(g.get('xdays', []).toSet()).size();
     }
 
+    // Secret Alvin Tower: { start, done }. Each climb notes its start with the server's clock; reaching the
+    // top once pays 3000 coins, if at least 2.5 minutes have passed since that start.
+    function al(d) {
+      return d.get('alvin', {});
+    }
+    function alvinStart(a, b) {
+      return b.keys().hasOnly(['start', 'done']) && b.start == request.time && b.get('done', false) == a.get('done', false);
+    }
+    function alvinClaim(a, b) {
+      return a.get('done', false) == false && b.keys().hasOnly(['start', 'done']) && b.done == true
+        && 'start' in a && b.start == a.start
+        && request.time.toMillis() - a.start.toMillis() >= 150000;
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
@@ -72,7 +86,8 @@ service cloud.firestore {
         && tw(d).keys().hasOnly(['week', 'cleared', 'prize'])
         && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int
         && gb(d).days is list && gb(d).days.size() <= 8
-        && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8;
+        && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8
+        && al(d) is map;
     }
 
     // Player accounts. Anyone signed in can read them (for leaderboards); only the owner can change theirs.
@@ -86,7 +101,8 @@ service cloud.firestore {
         && request.resource.data.coins == 50
         && request.resource.data.skins.size() == 2
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
-        && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0;
+        && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
+        && !('alvin' in request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -101,10 +117,16 @@ service cloud.firestore {
             || prizeClaim(tw(resource.data), tw(request.resource.data)))
         // Gambler progress only grows by one boss win a day
         && (gb(request.resource.data) == gb(resource.data) || bossWin(gb(resource.data), gb(request.resource.data)))
-        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 2000 for a Tower prize)
+        // The Secret Alvin Tower: a climb starts, or the one prize is collected
+        && (al(request.resource.data) == al(resource.data)
+            || alvinStart(al(resource.data), al(request.resource.data))
+            || alvinClaim(al(resource.data), al(request.resource.data)))
+        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 2000 for a Tower prize,
+        // 3000 for the Secret Alvin Tower)
         && (request.resource.data.coins - resource.data.coins <= 300
             || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
-            || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data))))
+            || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data)))
+            || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data))))
         // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler and Awakened Gambler
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1

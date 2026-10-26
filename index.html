@@ -231,6 +231,11 @@
     position: fixed; top: calc(48px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center; font-size: 18px;
     pointer-events: none; text-shadow: 0 0 6px #000, 0 0 6px #000; padding: 0 16px;
   }
+  #alvinFx { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; pointer-events: none; animation: alvinFx 2.6s ease-out forwards; }
+  #alvinFx div { text-align: center; color: #fff; text-shadow: 0 0 20px #c084fc; }
+  #alvinFx b { display: block; font-size: 72px; font-weight: 900; }
+  #alvinFx span { font-size: 18px; font-weight: 800; letter-spacing: 1px; }
+  @keyframes alvinFx { 0% { background: rgba(255,255,255,0); } 15% { background: #fff; } 40% { background: #2a0f45; } 80% { background: rgba(42,15,69,.9); opacity: 1; } 100% { background: rgba(42,15,69,0); opacity: 0; } }
   #secretFx { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0,0,0,.6); pointer-events: none; }
   #secretFx video { width: min(80vw, 80vh); max-height: 80vh; border-radius: 18px; border: 3px solid #c084fc; box-shadow: 0 0 40px #c084fc; background: #000; }
   #hint.three { top: calc(92px + env(safe-area-inset-top)); }   /* below the middle HP bar */
@@ -1599,7 +1604,7 @@ $('startBtn').onclick = () => {
   sfx(520, 0.1, 'square', 0.04, 1.5);
   if (towerSetup) startTower(); else if (bossSetup) startBoss(); else if (online) setReady(); else startMatch();
 };
-$('againBtn').onclick = () => (mode === 'tower' ? startTower() : mode === 'boss' ? openBoss(players[1]?.level) : mode === 'online' ? (lastRoom ? enterLobby(lastRoom.code, lastRoom.isHost) : startMatchmaking(lastSize)) : startMatch());
+$('againBtn').onclick = () => (mode === 'tower' ? startTower(lastTowerAlvin) : mode === 'boss' ? openBoss(players[1]?.level) : mode === 'online' ? (lastRoom ? enterLobby(lastRoom.code, lastRoom.isHost) : startMatchmaking(lastSize)) : startMatch());
 $('overMenu').onclick = () => show('app');
 $('quitBtn').onclick = () => {
   if (tower && state === 'tower') {
@@ -3356,6 +3361,23 @@ const TOWER_STAGES = [
   { name: 'Last Stand', color: '#facc15', feats: ['crumble', 'lift', 'ice', 'bounce', 'spikes', 'blink'] },
   { name: 'Summit', color: '#fde68a', feats: ['move', 'crumble', 'spikes', 'blink', 'ice', 'belt', 'lift', 'bounce'] },
 ];
+// The Secret Alvin Tower: found by tapping the Alvin Cube 100 times. Hard from the first jump.
+const ALVIN_STAGES = [
+  { name: 'The Doorway', color: '#a78bfa', feats: ['spikes', 'move'] },
+  { name: 'Spike Garden', color: '#c084fc', feats: ['spikes', 'blink', 'move'] },
+  { name: 'Blink Hall', color: '#d946ef', feats: ['blink', 'spikes', 'crumble'] },
+  { name: 'Moving Madness', color: '#ec4899', feats: ['move', 'spikes', 'lift'] },
+  { name: 'Crumble Pit', color: '#f43f5e', feats: ['crumble', 'spikes', 'blink'] },
+  { name: 'Ice Spikes', color: '#38bdf8', feats: ['ice', 'spikes', 'move'] },
+  { name: 'Elevator of Doom', color: '#818cf8', feats: ['lift', 'spikes', 'blink'] },
+  { name: 'Conveyor Chaos', color: '#22d3ee', feats: ['belt', 'spikes', 'move', 'blink'] },
+  { name: "Alvin's Revenge", color: '#fb7185', feats: ['spikes', 'move', 'crumble', 'blink', 'bounce'] },
+  { name: 'The Gauntlet', color: '#f97316', feats: ['spikes', 'blink', 'move', 'ice', 'lift'] },
+  { name: 'Rage Quit', color: '#ef4444', feats: ['spikes', 'crumble', 'blink', 'belt', 'move'] },
+  { name: "Alvin's Throne", color: '#facc15', feats: ['spikes', 'move', 'crumble', 'blink', 'ice', 'belt', 'lift', 'bounce'] },
+];
+const ALVIN_COINS = 3000, ALVIN_STAGE_H = 2000;   // taller stages than the weekly tower
+const ALVIN_MIN_MS = 150000;      // no real climb of the Secret Alvin Tower is faster (the server checks it too)
 const lerp = (a, b, t) => a + (b - a) * t;
 const approach = (v, to, step) => (v < to ? Math.min(to, v + step) : Math.max(to, v - step));
 const fmtTime = ms => { const ts = Math.floor(ms / 100), m = Math.floor(ts / 600); return `${m}:${((ts % 600) / 10).toFixed(1).padStart(4, '0')}`; };
@@ -3368,16 +3390,17 @@ function tAir(dy, v = T_JUMP) {
 
 // Builds the week's tower. Every platform can be reached from the one before it,
 // and later stages use smaller platforms, longer jumps and more tricks.
-function buildTower(week) {
-  const rnd = seeded('tower-' + week), R = (a, b) => a + (b - a) * rnd();
-  const last = TOWER_STAGES.length - 1;
+// stages: the stage list; hard: the Secret Alvin Tower, hard from the very first jump
+function buildTower(week, stages = TOWER_STAGES, hard = false) {
+  const rnd = seeded(hard ? 'alvin-tower' : 'tower-' + week), R = (a, b) => a + (b - a) * rnd();
+  const last = stages.length - 1;
   const plats = [], bounds = [-Infinity];
   const add = o => { const p = { h: T_PLAT_H, dx: 0, safe: [0, o.w], ...o }; p.x0 = p.x; p.y0 = p.y; p.py = p.y; plats.push(p); return p; };
   let prev = add({ type: 'floor', x: 0, y: 0, w: TW, stage: 0 });
   let dir = rnd() < 0.5 ? 1 : -1;
 
   function place(type, s) {
-    const d = s / last;
+    const d = hard ? lerp(0.75, 1, s / last) : s / last;
     const v = prev.type === 'bounce' ? T_BOUNCE : T_JUMP;
     const dy = v === T_BOUNCE ? R(130, 160 + 45 * d) : R(lerp(46, 68, d), lerp(66, 90, d));
     let w = lerp(100, 40, d) * R(0.85, 1.15);
@@ -3388,7 +3411,7 @@ function buildTower(week) {
     if (type === 'summit') w = 130;
     w = Math.max(34, Math.round(w));
     // Spike strips: always on 'spikes' platforms, and from stage 4 they turn up on ordinary ones too
-    const spiky = type === 'spikes' || (s >= 3 && ['solid', 'move', 'crumble', 'ice'].includes(type) && rnd() < lerp(0.1, 0.4, d));
+    const spiky = type === 'spikes' || ((hard || s >= 3) && ['solid', 'move', 'crumble', 'ice'].includes(type) && rnd() < (hard ? 0.6 : lerp(0.1, 0.4, d)));
     const spikes = spiky ? Math.round(R(26, 46)) : 0;
     let k = Math.min(0.88, lerp(0.42, 0.84, d) * R(0.85, 1.1));
     if (type === 'ledge' || type === 'summit') k *= 0.5;
@@ -3421,17 +3444,17 @@ function buildTower(week) {
   }
 
   for (let s = 0; s <= last; s++) {
-    const st = TOWER_STAGES[s], top = (s + 1) * T_STAGE_H;
+    const st = stages[s], top = (s + 1) * (hard ? ALVIN_STAGE_H : T_STAGE_H);
     if (s > 0) { place('ledge', s).label = true; bounds.push(prev.y - 20); }
     for (let n = 0; prev.y < top - 110; n++) {
       let type = 'solid';
-      if (st.feats.length && (n === 0 || rnd() < lerp(0.4, 0.8, s / last))) type = n === 0 ? st.feats[0] : st.feats[Math.floor(rnd() * st.feats.length)];
+      if (st.feats.length && (n === 0 || rnd() < (hard ? 0.9 : lerp(0.4, 0.8, s / last)))) type = n === 0 ? st.feats[0] : st.feats[Math.floor(rnd() * st.feats.length)];
       if (type === 'bounce' && prev.type === 'bounce') type = 'solid';
       place(type, s);
     }
   }
   place('summit', last);
-  return { plats, bounds, top: prev.y };
+  return { plats, bounds, top: prev.y, stages };
 }
 
 let tower = null;            // the climb in progress
@@ -3473,8 +3496,10 @@ function renderTowerSetup() {
   if (me) loadTowerLb($('towerLb'), 5);
 }
 
-function startTower() {
-  const week = towerWeek(), built = buildTower(week);
+let lastTowerAlvin = false;
+function startTower(alvin = false) {
+  const week = towerWeek(), built = alvin ? buildTower(0, ALVIN_STAGES, true) : buildTower(week);
+  lastTowerAlvin = alvin;
   const floor = built.plats[0];
   tower = {
     week, ...built, cam: -200, movers: built.plats.filter(p => p.type === 'move' || p.type === 'lift'),
@@ -3483,10 +3508,11 @@ function startTower() {
     hpLag: TOWER_HP, hpFlash: 0,
     keys: { L: false, R: false, J: false }, in: { L: false, R: false, J: false },
     time: 0, clock: 0, started: false, done: false, sc: 1, maxY: 0, topStage: 0,
-    banner: null, parts: [], hurt: 0, quitAsk: 0, ranked: false,
+    banner: null, parts: [], hurt: 0, quitAsk: 0, ranked: false, alvin,
   };
   const t = tower;
-  t.runReady = me && !needsUsername
+  if (alvin) t.runReady = me && !needsUsername ? startAlvinRun().then(() => true, () => false) : Promise.resolve(false);
+  else t.runReady = me && !needsUsername
     ? startTowerRun(week).then(() => (t.ranked = true), () => { if (tower === t) toast("Couldn't save the start of this climb, so it won't count for the tournament."); return false; })
     : Promise.resolve(false);
   mode = 'tower'; state = 'tower';
@@ -3623,7 +3649,7 @@ function finishTower() {
   if (t.done) return;
   t.done = true; state = 'towerDone';
   const ms = Math.round(t.clock * 1000);
-  for (let i = 0; i < 4; i++) towerDust(t, t.p.x, t.p.y + 20, TOWER_STAGES[i * 4 % TOWER_STAGES.length].color, 30, 600);
+  for (let i = 0; i < 4; i++) towerDust(t, t.p.x, t.p.y + 20, t.stages[i * 4 % t.stages.length].color, 30, 600);
   [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => sfx(f, 0.18, 'square', 0.04), i * 120));
   buzz('success');
   native({ type: 'awake', on: false });
@@ -3645,12 +3671,13 @@ function towerDead() {
   text.textContent = 'Out of HP!'; text.style.color = '#ff4d5e';
   $('againBtn').textContent = 'Try again'; $('againBtn').disabled = false;
   const pct = Math.min(100, Math.round(t.maxY / t.top * 100));
-  $('results').innerHTML = `<div class="line">You made it to <b>stage ${t.topStage + 1}</b> of ${TOWER_STAGES.length} (${pct}% of the way up) in ${fmtTime(t.clock * 1000)}.</div>
+  $('results').innerHTML = `<div class="line">You made it to <b>stage ${t.topStage + 1}</b> of ${t.stages.length} (${pct}% of the way up) in ${fmtTime(t.clock * 1000)}.</div>
     <div class="fine">Every spike takes ${SPIKE_DMG} HP. Watch out for the red ones!</div>`;
   setTimeout(() => { if (tower === t) screens.forEach(x => $(x).classList.toggle('hidden', x !== 'over')); }, 1300);
 }
 
 async function showTowerResult(t, ms) {
+  if (t.alvin) return showAlvinResult(t, ms);
   const text = $('winText');
   text.textContent = 'You reached the top!'; text.style.color = '#facc15';
   $('againBtn').textContent = 'Climb again';
@@ -3671,6 +3698,65 @@ async function showTowerResult(t, ms) {
     if (r.rank) lines.push(`<div class="line">You're <b>#${r.rank}</b> this week${r.rank === 1 ? '. Hold on to first place until the week ends to win the prize!' : ''}</div>`);
   } catch (e) {
     lines.push(`<div class="line down">${escapeHtml(e.message)}</div>`);
+  }
+  if (tower === t) results.innerHTML = lines.join('');
+  $('againBtn').disabled = false;
+}
+
+// ---------- The Secret Alvin Tower ----------
+// Tapping the Alvin Cube's picture 100 times (in the Shop or the cube picker) teleports you there. No hints.
+let alvinTaps = 0;
+document.addEventListener('pointerdown', e => {
+  if (!e.target.matches?.('canvas[data-skin-anim="champion"], canvas[data-skin="champion"]')) return;
+  if (++alvinTaps < 100) return;
+  alvinTaps = 0;
+  teleportToAlvin();
+});
+function teleportToAlvin() {
+  const fx = document.createElement('div');
+  fx.id = 'alvinFx';
+  fx.innerHTML = '<div><b>???</b><span>Welcome to the Secret Alvin Tower</span></div>';
+  document.body.appendChild(fx);
+  sfx(110, 0.9, 'sawtooth', 0.05, 8); buzz('heavy');
+  setTimeout(() => startTower(true), 900);
+  setTimeout(() => fx.remove(), 2600);
+}
+// The server notes the start of each climb, so the 3000 coins can't come from a climb faster than a real one
+async function startAlvinRun() {
+  await fs(auth1, 'POST', ':commit', { body: { writes: [{
+    update: { name: docName('users/' + auth1.uid), fields: {} },
+    updateMask: { fieldPaths: [] },
+    updateTransforms: [{ fieldPath: 'alvin.start', setToServerValue: 'REQUEST_TIME' }],
+  }] } });
+}
+async function showAlvinResult(t, ms) {
+  const text = $('winText');
+  text.textContent = 'You conquered the Secret Alvin Tower!'; text.style.color = '#facc15';
+  $('againBtn').textContent = 'Climb again';
+  const results = $('results'), lines = [`<div class="tower-time">${fmtTime(ms)}</div>`];
+  if (!me) {
+    lines.push(`<div class="line"><b>Log in</b> and climb it again to win ${coinHtml(ALVIN_COINS)}.</div>`);
+    results.innerHTML = lines.join(''); return;
+  }
+  results.innerHTML = lines.join('') + '<div class="fine">Saving…</div>';
+  $('againBtn').disabled = true;
+  try {
+    const d = await loadUser(auth1);
+    if (d?.alvin?.done) lines.push(`<div class="line">You already won the ${coinHtml(ALVIN_COINS)} for this tower. Legend!</div>`);
+    else {
+      if (!(await t.runReady)) throw new GameError("This climb started without a connection, so the coins can't be saved.");
+      if (ms < ALVIN_MIN_MS) throw new GameError("That's too fast to be real, so the coins weren't saved.");
+      await fs(auth1, 'PATCH', `/users/${auth1.uid}`, {
+        body: { fields: toFields({ coins: d.coins + ALVIN_COINS, alvin: { done: true } }) },
+        query: '?currentDocument.exists=true&updateMask.fieldPaths=coins&updateMask.fieldPaths=alvin.done',
+      });
+      me.coins = d.coins + ALVIN_COINS;
+      sfx(880, 0.3, 'square', 0.04, 1.5);
+      lines.push(`<div class="line"><span class="up">+${ALVIN_COINS}</span> ${coinHtml('')} coins!</div>`);
+    }
+  } catch (e) {
+    const msg = /refused/.test(e.message) ? "The coins weren't saved: the server says that climb was faster than possible." : e.message;
+    lines.push(`<div class="line down">${escapeHtml(msg)}</div>`);
   }
   if (tower === t) results.innerHTML = lines.join('');
   $('againBtn').disabled = false;
@@ -3814,10 +3900,10 @@ function towerDraw() {
   const X = x => ox + x * sc, Y = y => H - (y - cam) * sc;
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   // Stage colors: a tinted inside, a faint glow outside and colored walls
-  for (let s = 0; s < TOWER_STAGES.length; s++) {
+  for (let s = 0; s < t.stages.length; s++) {
     const y0 = s ? t.bounds[s] : -200, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top + 2000;
     if (y1 < cam || y0 > top) continue;
-    const c = TOWER_STAGES[s].color, a = Y(y1), b = Y(y0);
+    const c = t.stages[s].color, a = Y(y1), b = Y(y0);
     ctx.fillStyle = c;
     ctx.globalAlpha = 0.04; ctx.fillRect(0, a, W, b - a);
     ctx.globalAlpha = 0.08; ctx.fillRect(X(0), a, TW * sc, b - a);
@@ -3859,7 +3945,7 @@ function towerDraw() {
 }
 
 function drawPlat(t, pl, x, y, w, h, sc) {
-  const col = TOWER_STAGES[pl.stage].color;
+  const col = t.stages[pl.stage].color;
   ctx.save();
   let alpha = 1;
   if (pl.type === 'blink') {
@@ -3937,7 +4023,7 @@ function drawPlat(t, pl, x, y, w, h, sc) {
 }
 // Each stage's name, painted on the tower wall behind the platforms
 function drawStageLabel(pl, y, sc) {
-  const st = TOWER_STAGES[pl.stage];
+  const st = tower.stages[pl.stage];
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = st.color; ctx.globalAlpha = 0.3;
   ctx.font = `900 ${Math.round(30 * sc)}px system-ui, sans-serif`;
@@ -3948,9 +4034,9 @@ function drawStageLabel(pl, y, sc) {
 }
 
 function drawTowerHud(t) {
-  const topY = 12 + safeTop, st = TOWER_STAGES[t.stage || 0];
+  const topY = 12 + safeTop, st = t.stages[t.stage || 0];
   // A dark backing so the clock stays readable over the tower
-  const label = `Stage ${(t.stage || 0) + 1}/${TOWER_STAGES.length} · ${st.name}`;
+  const label = `${t.alvin ? 'SECRET · ' : ''}Stage ${(t.stage || 0) + 1}/${t.stages.length} · ${st.name}`;
   ctx.font = '700 13px system-ui, sans-serif';
   const bw = Math.max(118, ctx.measureText(label).width) + 20;
   ctx.fillStyle = 'rgba(0,0,0,.6)';
@@ -3986,17 +4072,17 @@ function drawTowerHud(t) {
   const toBar = y => b0 - Math.max(0, Math.min(1, y / t.top)) * bh;
   ctx.fillStyle = 'rgba(255,255,255,.1)'; pill(rx - bw2 / 2, b1, bw2, bh); ctx.fill();
   ctx.save(); pill(rx - bw2 / 2, b1, bw2, bh); ctx.clip();
-  for (let s = 0; s < TOWER_STAGES.length; s++) {
+  for (let s = 0; s < t.stages.length; s++) {
     const y0 = s ? t.bounds[s] : 0, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top;
-    ctx.fillStyle = TOWER_STAGES[s].color; ctx.globalAlpha = s <= t.topStage ? 1 : 0.22;
+    ctx.fillStyle = t.stages[s].color; ctx.globalAlpha = s <= t.topStage ? 1 : 0.22;
     ctx.fillRect(rx - bw2 / 2, toBar(y1) + 1, bw2, toBar(y0) - toBar(y1) - 1);
   }
   ctx.restore(); ctx.globalAlpha = 1;
   if (roomy) {
     ctx.font = '700 10px system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    for (let s = 0; s < TOWER_STAGES.length; s++) {
+    for (let s = 0; s < t.stages.length; s++) {
       const y0 = s ? t.bounds[s] : 0, y1 = s + 1 < t.bounds.length ? t.bounds[s + 1] : t.top;
-      ctx.fillStyle = s <= t.topStage ? TOWER_STAGES[s].color : 'rgba(255,255,255,.3)';
+      ctx.fillStyle = s <= t.topStage ? t.stages[s].color : 'rgba(255,255,255,.3)';
       ctx.fillText(s + 1, rx + bw2 / 2 + 6, (toBar(y0) + toBar(y1)) / 2);
     }
   }
@@ -4013,7 +4099,7 @@ function drawTowerHud(t) {
   ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.font = `800 ${roomy ? 12 : 10}px system-ui, sans-serif`; ctx.fillText('TOP', tx, b1 - 5);
   // New stage banner
   if (t.banner) {
-    const b = TOWER_STAGES[t.banner.stage], a = Math.min(1, t.banner.life * 2, (2.4 - t.banner.life) * 6);
+    const b = t.stages[t.banner.stage], a = Math.min(1, t.banner.life * 2, (2.4 - t.banner.life) * 6);
     ctx.globalAlpha = a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = b.color; ctx.font = '900 40px system-ui, sans-serif';
     ctx.fillText(`STAGE ${t.banner.stage + 1}`, W / 2, H * 0.3);
