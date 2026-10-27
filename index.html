@@ -1195,19 +1195,19 @@ function eventsTab() {
 // ---------- Shop tab ----------
 function shopTab() {
   const w = weekInfo();
-  const cards = SKINS.map(s => {
+  // Code skins only show up for players who have redeemed them
+  const cards = SKINS.filter(s => !s.code || (me && me.skins.includes(s.id))).map(s => {
     const owned = me ? me.skins.includes(s.id) : FREE_SKINS.includes(s.id);
     const price = salePrice(s), onSale = price !== s.price;
     let btn;
-    if (s.code && !owned) btn = '<button class="small ghost" data-act="goto" data-to="profile">Enter a code</button>';
-    else if (s.prize && !owned) btn = s.id.startsWith('gambler') ? `<button class="small ghost" data-act="boss" data-level="${s.id === 'gambler2' ? 'extreme' : 'normal'}" ${gamblerOn() ? '' : 'disabled'}>${s.id === 'gambler2' ? 'Beat both Gamblers' : 'Beat the Gambler'}</button>` : '<button class="small ghost" data-act="tower">Win the Tower</button>';
+    if (s.prize && !owned) btn = s.id.startsWith('gambler') ? `<button class="small ghost" data-act="boss" data-level="${s.id === 'gambler2' ? 'extreme' : 'normal'}" ${gamblerOn() ? '' : 'disabled'}>${s.id === 'gambler2' ? 'Beat both Gamblers' : 'Beat the Gambler'}</button>` : '<button class="small ghost" data-act="tower">Win the Tower</button>';
     else if (owned) btn = loadouts[0].skin === s.id ? '<button class="small ghost" disabled>Equipped</button>' : `<button class="small ghost" data-act="equip" data-id="${s.id}">Equip</button>`;
     else if (!me) btn = `<button class="small ghost" data-act="goto" data-to="profile">Log in to buy</button>`;
     else btn = `<button class="small coin-btn" data-act="buy" data-id="${s.id}" ${me.coins < price ? 'disabled' : ''}>Buy</button>`;
     return `<div class="skin-card">${onSale ? '<span class="tag">50% OFF</span>' : ''}
       <canvas data-skin-anim="${s.id}" width="144" height="144"></canvas>
       <b>${s.name}</b>
-      <span class="price fine">${owned ? 'Owned' : s.code ? 'Secret code skin' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
+      <span class="price fine">${owned ? 'Owned' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
       ${btn}</div>`;
   }).join('');
   return `
