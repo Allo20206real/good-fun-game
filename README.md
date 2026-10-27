@@ -68,6 +68,21 @@ Each event also puts one skin on sale at half price.
 
 A new tower is built every Monday (00:00 UTC), the same one for everyone. A climb of 5:00 or less pays 500 coins, once a week. Only a faster time replaces your best. You have 100 HP; every spike takes 10 and it never heals, so at 0 HP the climb is over. The fastest climb when the week ends wins 2000 coins and the Champion skin, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
 
+## Cases
+
+The Cases tab sells four cases. Each one gives coins or a cube, and a cube you already own pays coins instead.
+
+| Case | Price | Best prizes |
+|---|---|---|
+| Starter Case | 100 | Ruby 8%, Gold 2% |
+| Legendary Case | 1,000 | Plasma 12%, Dragon 5% |
+| Ultra Case | 10,000 | Dragon 15%, Phoenix 3% |
+| Limited Case | 15,000 | Frostfire 20%, Phoenix 10%, Diamond 3% |
+
+Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire and Diamond only from the Limited Case, which is sold until 10 November 2026. Case cubes only show up in the shop for players who own them. The full chances are under "What's inside" on each case.
+
+The server picks the prize: buying a case stamps the server's clock on the account, and the last three digits of that time in milliseconds choose the prize. `firestore.rules` checks that the prize collected is the one the time chose, so the case tables in `index.html` (`CASES`) and `firestore.rules` must stay the same.
+
 ## Groups
 
 Make a group and share its 6-character code. Friends join from the Groups tab, and the group shows a leaderboard of everyone's score. There's also a **Top players** list across everyone.

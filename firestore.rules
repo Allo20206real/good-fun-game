@@ -89,8 +89,64 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/codes/$(newCode())).data.left == codeDoc().left - 1;
     }
 
+    // Cases: opening = { type, at, done }. Buying a case pays its price and stamps the server's clock in 'at';
+    // the last three digits of that time in milliseconds pick the prize (chances out of 1000, the same tables
+    // as CASES in index.html). A second save collects exactly that prize. A cube you already own pays 'dupe' coins.
+    function op(d) {
+      return d.get('opening', {});
+    }
+    function casePrice(t) {
+      return {'basic': 100, 'legendary': 1000, 'ultra': 10000, 'limited': 15000}[t];
+    }
+    // Which of the 7 items r (0-999) lands on, given where each chance ends when they are added up
+    function idx(r, e0, e1, e2, e3, e4, e5) {
+      return (r >= e0 ? 1 : 0) + (r >= e1 ? 1 : 0) + (r >= e2 ? 1 : 0) + (r >= e3 ? 1 : 0) + (r >= e4 ? 1 : 0) + (r >= e5 ? 1 : 0);
+    }
+    function caseIdx(t, r) {
+      return t == 'basic' ? idx(r, 350, 600, 750, 850, 900, 980)
+        : t == 'legendary' ? idx(r, 270, 470, 620, 770, 890, 950)
+        : t == 'ultra' ? idx(r, 300, 500, 650, 770, 920, 970)
+        : idx(r, 250, 450, 650, 800, 900, 970);
+    }
+    // The cube of each item ('' for coins), and its coins (for a cube: what it pays if you already own it)
+    function caseSkin(t, i) {
+      return (t == 'basic' ? ['', '', 'neon', 'candy', '', 'ruby', 'gold']
+        : t == 'legendary' ? ['', '', 'rainbow', 'ruby', 'plasma', '', 'dragon']
+        : t == 'ultra' ? ['', '', 'moai', 'plasma', 'dragon', '', 'phoenix']
+        : ['', '', 'frostfire', 'dragon', 'phoenix', '', 'diamond'])[i];
+    }
+    function caseCoins(t, i) {
+      return (t == 'basic' ? [50, 100, 50, 70, 250, 100, 150]
+        : t == 'legendary' ? [500, 900, 500, 500, 600, 2500, 1500]
+        : t == 'ultra' ? [5000, 9000, 7000, 6000, 8000, 25000, 15000]
+        : [8000, 13000, 10000, 10000, 15000, 30000, 25000])[i];
+    }
+    function prizeAt(t, i) {
+      return {'skin': caseSkin(t, i), 'coins': caseCoins(t, i)};
+    }
+    function casePrize(o) {
+      return prizeAt(o.type, caseIdx(o.type, o.at.toMillis() % 1000));
+    }
+    function caseBuy(a, b) {
+      return op(b).keys().hasOnly(['type', 'at', 'done']) && op(b).type in ['basic', 'legendary', 'ultra', 'limited']
+        && op(b).at == request.time && op(b).done == false && op(a).get('done', true) == true
+        && a.coins - b.coins == casePrice(op(b).type) && b.skins == a.skins
+        // The Limited Case is sold until 10 November 2026
+        && (op(b).type != 'limited' || request.time < timestamp.date(2026, 11, 10));
+    }
+    function caseGain(a, b, p) {
+      return (p.skin == '' || p.skin in a.skins)
+        ? (b.skins == a.skins && b.coins - a.coins == p.coins)
+        : (b.coins == a.coins && b.skins.size() == a.skins.size() + 1 && b.skins.hasAll(a.skins) && p.skin in b.skins);
+    }
+    function caseClaim(a, b) {
+      return op(a).get('done', true) == false && op(b).keys().hasOnly(['type', 'at', 'done'])
+        && op(b).type == op(a).type && op(b).at == op(a).at && op(b).done == true
+        && caseGain(a, b, casePrize(op(a)));
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
@@ -102,7 +158,7 @@ service cloud.firestore {
         && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int
         && gb(d).days is list && gb(d).days.size() <= 8
         && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8
-        && al(d) is map
+        && al(d) is map && op(d) is map
         && d.get('codes', []) is list && d.get('codes', []).size() <= 50;
     }
 
@@ -118,7 +174,7 @@ service cloud.firestore {
         && request.resource.data.skins.size() == 2
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
         && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
-        && !('alvin' in request.resource.data) && !('codes' in request.resource.data);
+        && !('alvin' in request.resource.data) && !('codes' in request.resource.data) && !('opening' in request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -135,6 +191,8 @@ service cloud.firestore {
         && (gb(request.resource.data) == gb(resource.data) || bossWin(gb(resource.data), gb(request.resource.data)))
         // Codes only change by redeeming one
         && (request.resource.data.get('codes', []) == resource.data.get('codes', []) || redeem())
+        // Cases are bought and collected by the next rule
+        && op(request.resource.data) == op(resource.data)
         // The Secret Alvin Tower: a climb starts, or the one prize is collected
         && (al(request.resource.data) == al(resource.data)
             || alvinStart(al(resource.data), al(request.resource.data))
@@ -147,14 +205,12 @@ service cloud.firestore {
             || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data)))
             || (request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
                 && request.resource.data.coins - resource.data.coins <= codeDoc().get('coins', 0)))
-        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler, Awakened Gambler and
-        // Sigma (a code). A code can also give the skin it names.
+        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler, Awakened Gambler,
+        // Sigma (a code) and the case cubes. A code can also give the skin it names.
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
-                && !('champion' in request.resource.data.skins && !('champion' in resource.data.skins))
-                && !('gambler' in request.resource.data.skins && !('gambler' in resource.data.skins))
-                && !('gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins))
-                && !('sigma' in request.resource.data.skins && !('sigma' in resource.data.skins))
+                && !request.resource.data.skins.toSet().difference(resource.data.skins.toSet()).hasAny(['champion', 'gambler',
+                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond'])
                 && resource.data.coins - request.resource.data.coins >= 50)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
@@ -175,6 +231,13 @@ service cloud.firestore {
                 && request.resource.data.skins.hasAll(resource.data.skins)
                 && 'champion' in request.resource.data.skins
                 && prizeClaim(tw(resource.data), tw(request.resource.data))));
+
+      // Cases, kept apart from the rule above so each check stays small: a save that only buys a case
+      // or collects its prize
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'opening'])
+        && request.resource.data.coins is int && request.resource.data.skins.size() <= 30
+        && (caseBuy(resource.data, request.resource.data) || caseClaim(resource.data, request.resource.data));
 
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;
