@@ -110,6 +110,9 @@
   button.tower-btn { width: 100%; display: flex; justify-content: space-between; align-items: center; text-align: left; padding: 16px 18px; font-size: 19px; font-weight: 800;
     color: #0b0b10; background: linear-gradient(100deg, #4ade80, #38bdf8 30%, #c084fc 55%, #fb7185 78%, #facc15); }
   button.tower-btn small { display: block; font-size: 13px; font-weight: 600; opacity: .8; }
+  .captcha-box { min-height: 65px; }
+  .ad-card { display: flex; flex-direction: column; gap: 4px; min-height: 60px; }
+  .ad-reward h3 { margin: 0; }
   button.afk-btn { background: linear-gradient(100deg, #1e1b4b, #312e81 55%, #1e1b4b); color: #e0e7ff; border: 1px solid #6366f1; }
   #afkScreen { background: #05050c; }
   #afkCv { width: min(420px, 100%); aspect-ratio: 4 / 3; border-radius: 16px; border: 1px solid #23234a; background: #0a0a1a; }
@@ -447,6 +450,14 @@ const cfg = window.BD_FIREBASE || FIREBASE_CONFIG;   // tests point this at the 
 const ONLINE = !!(cfg.apiKey && cfg.projectId);
 const MULTIPLAYER = ONLINE && !!cfg.databaseURL;
 const PRIVACY_URL = 'https://bounceduel.se/privacy.html';
+
+// Captcha on new accounts (website only). This is Cloudflare Turnstile's test key, which always passes: put the
+// real site key from Cloudflare here. Tests against the emulator skip it unless they set window.BD_CAPTCHA.
+const TURNSTILE_SITEKEY = '1x00000000000000000000AA';
+// Ads on the website (Google AdSense). Empty means no ads on the website. The app has its own (mobile/ads.ts).
+const ADSENSE = { client: '', bannerSlot: '' };   // client looks like 'ca-pub-1234567890123456'
+const IN_APP = !!window.ReactNativeWebView;
+const AD_COINS = 25, AD_MAX = 5;   // coins for watching a video ad, and how many a day
 
 // ---------- Small helpers ----------
 const $ = id => document.getElementById(id);
@@ -1064,7 +1075,13 @@ let particles = [], popups = [];
 let muted = store.get('bd.muted', false);
 
 // ---------- Phone app bridge (vibration, screen awake, back button in the Expo app) ----------
-function native(msg) { try { window.ReactNativeWebView?.postMessage(JSON.stringify(msg)); } catch {} }
+function native(msg) {
+  try {
+    window.ReactNativeWebView?.postMessage(JSON.stringify(msg));
+    // The banner under the game only shows in the menus, never during a match
+    if (msg.type === 'awake') window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'banner', on: !msg.on && !$('app').classList.contains('hidden') }));
+  } catch {}
+}
 let lastBuzz = 0;
 function buzz(kind) {
   if (kind === 'light') { if (clock - lastBuzz < 0.08) return; lastBuzz = clock; }
@@ -1177,6 +1194,7 @@ function renderApp() {
   if (tab === 'profile') wireProfile();
   drawStaticSkins(body);
   drawCaseArt(body);
+  fillBanners(body);
   tickTimers();
 }
 
@@ -1207,6 +1225,7 @@ $('tabBody').addEventListener('click', async e => {
   else if (act === 'claimChallenge') busy(b, () => claimChallenge(b.dataset.id));
   else if (act === 'buy') busy(b, () => buySkin(b.dataset.id));
   else if (act === 'openCase') busy(b, () => openCase(b.dataset.id));
+  else if (act === 'watchAd') busy(b, () => watchAd());
   else if (act === 'claimCase') busy(b, () => collectCase());
   else if (act === 'equip') { loadouts[0].skin = b.dataset.id; store.set('bd.loadouts', loadouts); toast('Equipped for Player 1'); renderApp(); }
   else if (act === 'openGroup') { groupView = b.dataset.code; renderApp(); }
@@ -1267,6 +1286,7 @@ function playTab() {
       ${winStreak >= 2 ? `<span class="streak">${winStreak} wins in a row! Keep it going</span>` : ''}</div>
     </div><div class="col-side">
     ${reward}
+    ${adCard()}
     ${installCard()}
     ${me || !ONLINE ? '' : `<div class="card"><h3>You're playing as a guest</h3>
       <p>Log in to save your coins and score, and to play online against real people.</p>
@@ -1286,6 +1306,7 @@ function playTab() {
       <p>${w.event.desc} Event matches against the CPU pay 50% more coins.</p>
       <button class="event-btn" data-act="playEvent">Play event match</button>
     </div>
+    ${bannerCard()}
     <p class="fine desk-only">On a computer: <b>Space</b> or <b>A</b> uses your power, <b>Esc</b> leaves a match. In the Tower, move with the arrow keys and jump with <b>Space</b>.</p>
   </div></div>`;
 }
@@ -1673,6 +1694,97 @@ function drawAfkRoom() {
   c.globalAlpha = 1;
 }
 
+// ---------- Captcha ----------
+let captchaToken = '', captchaLoad = null, captchaFailed = false;   // if it can't load at all, sign-up still works
+const captchaOn = () => ONLINE && !IN_APP && !!TURNSTILE_SITEKEY && (!window.BD_FIREBASE || window.BD_CAPTCHA);
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.async = true; s.onload = res; s.onerror = rej; document.head.append(s); });
+}
+async function showCaptcha(box) {
+  captchaToken = '';
+  try {
+    captchaLoad ||= loadScript('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');
+    await captchaLoad;
+    if (!document.contains(box)) return;
+    window.turnstile.render(box, {
+      sitekey: TURNSTILE_SITEKEY, theme: 'dark',
+      callback: t => { captchaToken = t; },
+      'expired-callback': () => { captchaToken = ''; },
+      'error-callback': () => { captchaToken = ''; },
+    });
+  } catch { captchaFailed = true; captchaLoad = null; }
+}
+
+// ---------- Ads ----------
+// The app shows a banner under the game only while you're in the menus (never during a match)
+function bannerCard() {
+  if (IN_APP || !ADSENSE.client || !ADSENSE.bannerSlot) return '';
+  return `<div class="ad-card"><span class="fine">Ad</span><ins class="adsbygoogle" style="display:block" data-ad-client="${ADSENSE.client}" data-ad-slot="${ADSENSE.bannerSlot}" data-ad-format="auto" data-full-width-responsive="true"></ins></div>`;
+}
+let adsenseLoad = null;
+function loadAdsense() {
+  if (!ADSENSE.client) return Promise.reject(new Error('no ads'));
+  window.adsbygoogle = window.adsbygoogle || [];
+  window.adsbygoogle.requestNonPersonalizedAds = 1;   // many players are kids: no personalised ads
+  window.adBreak = window.adConfig = function (o) { window.adsbygoogle.push(o); };   // Google's H5 games ad API
+  adsenseLoad ||= new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + ADSENSE.client;
+    s.async = true; s.crossOrigin = 'anonymous'; s.onload = res; s.onerror = rej;
+    document.head.append(s);
+  });
+  return adsenseLoad;
+}
+function fillBanners(root) {
+  const slots = root.querySelectorAll('ins.adsbygoogle:not([data-filled])');
+  if (!slots.length) return;
+  loadAdsense().then(() => slots.forEach(s => { s.dataset.filled = '1'; try { window.adsbygoogle.push({}); } catch {} })).catch(() => {});
+}
+const canWatchAds = () => ONLINE && (IN_APP || !!ADSENSE.client);
+const adsToday = d => { const a = d?.ads; return a && a.day === Math.floor(Date.now() / 864e5) ? a.n : 0; };
+function adCard() {
+  if (!me || !canWatchAds()) return '';
+  const left = AD_MAX - adsToday(me);
+  return `<div class="card ad-reward"><div class="row between"><div class="grow"><h3>Watch an ad for ${coinHtml(AD_COINS)}</h3>
+    <p class="fine">${left > 0 ? `${left} of ${AD_MAX} left today` : 'That was all for today. Come back tomorrow!'}</p></div>
+    <button class="coin-btn" data-act="watchAd" ${left > 0 ? '' : 'disabled'}>Watch</button></div></div>`;
+}
+// Resolves true when the whole video was watched
+function playRewardedAd() {
+  return new Promise(res => {
+    let done = false;
+    const finish = ok => { if (!done) { done = true; res(ok); } };
+    if (IN_APP) {
+      window.bdAdResult = ok => finish(!!ok);
+      native({ type: 'rewardedAd' });
+      setTimeout(() => finish(false), 120000);
+      return;
+    }
+    loadAdsense().then(() => window.adBreak({
+      type: 'reward', name: 'coins',
+      beforeReward: showAdFn => showAdFn(),
+      adViewed: () => finish(true),
+      adDismissed: () => finish(false),
+      adBreakDone: () => finish(false),
+    })).catch(() => finish(false));
+  });
+}
+async function watchAd() {
+  if (adsToday(me) >= AD_MAX) throw new GameError('That was all the ads for today. Come back tomorrow!');
+  if (!(await playRewardedAd())) throw new GameError('No coins this time: the ad has to be watched to the end (or none was ready). Try again in a bit.');
+  const d = await loadUser(auth1), day = Math.floor(Date.now() / 864e5);
+  const n = adsToday(d) + 1;
+  if (n > AD_MAX) throw new GameError('That was all the ads for today. Come back tomorrow!');
+  await fs(auth1, 'POST', ':commit', { body: { writes: [{
+    update: { name: docName('users/' + auth1.uid), fields: toFields({ coins: d.coins + AD_COINS, ads: { day, n } }) },
+    updateMask: { fieldPaths: ['coins', 'ads'] }, currentDocument: { exists: true },
+  }] } });
+  me = normalizeUser({ ...d, coins: d.coins + AD_COINS, ads: { day, n } });
+  sfx(880, 0.2, 'square', 0.04, 1.5); buzz('success');
+  toast(`+${AD_COINS} coins! Thanks for watching.`);
+  renderApp();
+}
+
 // ---------- Groups tab ----------
 function groupsTab() {
   if (!ONLINE) return `<div class="card"><h3>Groups</h3><p>Accounts work in the Bounce Duel app and on the website. This copy of the game is guest-only.</p></div>`;
@@ -1842,6 +1954,7 @@ function profileTab() {
         ${creating ? '<label class="field">Username <input id="authUser" maxlength="16" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="This is your name in battles"></label>' : ''}
         <label class="field">Email <input id="authEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>
         ${resetting ? '' : `<label class="field">Password <input id="authPass" type="password" autocomplete="${creating ? 'new-password' : 'current-password'}"></label>`}
+        ${creating && captchaOn() ? '<div id="captchaBox" class="captcha-box"></div>' : ''}
         <p class="err" id="authErr"></p>
         <button type="submit">${creating ? 'Create account' : resetting ? 'Send reset email' : 'Log in'}</button>
       </form>
@@ -1853,6 +1966,7 @@ function wireProfile() {
   document.querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { profileMode = b.dataset.pm; renderApp(); });
   const form = $('authForm');
   if (!form) return;
+  if ($('captchaBox')) showCaptcha($('captchaBox'));
   form.onsubmit = e => {
     e.preventDefault();
     const btn = form.querySelector('button[type=submit]');
@@ -1862,6 +1976,7 @@ function wireProfile() {
       if (profileMode === 'create') {
         // Check the username before making the account, so a taken name doesn't leave a half-made account
         const name = checkUsername($('authUser').value);
+        if (captchaOn() && !captchaToken && !captchaFailed) throw new GameError("Tick the box to show you're not a robot.");
         if (await usernameOwner(name)) throw new GameError('That username is taken. Try another one.');
         const sess = await signUp(email, pass);
         login1(sess, null);

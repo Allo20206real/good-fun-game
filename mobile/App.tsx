@@ -1,11 +1,13 @@
 import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { StatusBar } from 'expo-status-bar';
-import { type ComponentType, type Ref, useEffect, useRef } from 'react';
-import { BackHandler, Linking, StyleSheet } from 'react-native';
+import { type ComponentType, type Ref, useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, Linking, StyleSheet, View } from 'react-native';
+import mobileAds, { AdEventType, BannerAd, BannerAdSize, MaxAdContentRating, RewardedAd, RewardedAdEventType } from 'react-native-google-mobile-ads';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview';
 
+import { BANNER_ID, REWARDED_ID } from './ads';
 import gameHtml from './gameHtml';
 
 const BASE_URL = 'https://bounce-duel.local/';
@@ -23,20 +25,51 @@ const HAPTICS: Record<string, () => Promise<void>> = {
   error: () => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error),
 };
 
-// Messages the game sends through window.ReactNativeWebView.postMessage
-function onGameMessage(e: WebViewMessageEvent) {
-  let msg: { type?: string; kind?: string; on?: boolean };
-  try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
-  if (msg.type === 'haptic' && msg.kind && HAPTICS[msg.kind]) HAPTICS[msg.kind]().catch(() => {});
-  if (msg.type === 'awake') {
-    if (msg.on) activateKeepAwakeAsync('match').catch(() => {});
-    else deactivateKeepAwake('match').catch(() => {});
-  }
-  if (msg.type === 'exit') BackHandler.exitApp();
-}
+// Many players are kids, so ads are family-safe and never personalised
+const adsReady = mobileAds()
+  .setRequestConfiguration({ maxAdContentRating: MaxAdContentRating.G, tagForChildDirectedTreatment: true, tagForUnderAgeOfConsent: true })
+  .then(() => mobileAds().initialize())
+  .catch(() => {});
+const AD_REQUEST = { requestNonPersonalizedAdsOnly: true };
 
 export default function App() {
   const web = useRef<WebViewHandle>(null);
+  const [banner, setBanner] = useState(false);
+  const rewardBusy = useRef(false);
+
+  // A video ad the player chose to watch for coins. The game hears back through window.bdAdResult(earned).
+  const showRewarded = useCallback(() => {
+    if (rewardBusy.current) return;
+    rewardBusy.current = true;
+    let earned = false;
+    const reply = (ok: boolean) => {
+      rewardBusy.current = false;
+      unsubs.forEach(u => u());
+      web.current?.injectJavaScript(`window.bdAdResult && window.bdAdResult(${ok}); true;`);
+    };
+    const ad = RewardedAd.createForAdRequest(REWARDED_ID, AD_REQUEST);
+    const unsubs = [
+      ad.addAdEventListener(RewardedAdEventType.LOADED, () => { ad.show().catch(() => reply(false)); }),
+      ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }),
+      ad.addAdEventListener(AdEventType.CLOSED, () => reply(earned)),
+      ad.addAdEventListener(AdEventType.ERROR, () => reply(false)),
+    ];
+    adsReady.then(() => ad.load());
+  }, []);
+
+  // Messages the game sends through window.ReactNativeWebView.postMessage
+  const onGameMessage = useCallback((e: WebViewMessageEvent) => {
+    let msg: { type?: string; kind?: string; on?: boolean };
+    try { msg = JSON.parse(e.nativeEvent.data); } catch { return; }
+    if (msg.type === 'haptic' && msg.kind && HAPTICS[msg.kind]) HAPTICS[msg.kind]().catch(() => {});
+    if (msg.type === 'awake') {
+      if (msg.on) activateKeepAwakeAsync('match').catch(() => {});
+      else deactivateKeepAwake('match').catch(() => {});
+    }
+    if (msg.type === 'banner') setBanner(!!msg.on);   // only in the menus, never during a match
+    if (msg.type === 'rewardedAd') showRewarded();
+    if (msg.type === 'exit') BackHandler.exitApp();
+  }, [showRewarded]);
 
   // Android back button steps back inside the game instead of closing the app
   useEffect(() => {
@@ -78,6 +111,11 @@ export default function App() {
             return false;
           }}
         />
+        {banner && (
+          <View style={styles.banner}>
+            <BannerAd unitId={BANNER_ID} size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER} requestOptions={AD_REQUEST} />
+          </View>
+        )}
         <StatusBar hidden />
       </SafeAreaView>
     </SafeAreaProvider>
@@ -87,6 +125,10 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000',
+  },
+  banner: {
+    alignItems: 'center',
     backgroundColor: '#000',
   },
 });

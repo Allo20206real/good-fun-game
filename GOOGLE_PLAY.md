@@ -63,7 +63,7 @@ The **Dashboard** shows a checklist. Go through each item:
 
 - **Privacy policy:** `https://bounceduel.se/privacy.html`
 - **App access:** choose **All or some functionality is restricted**, then add login details for a test account (create one in the game first). Note: "The game can be played as a guest; logging in saves coins and score."
-- **Ads:** No, my app does not contain ads.
+- **Ads:** Yes, my app contains ads (AdMob: a banner in the menus and optional video ads for coins).
 - **Content rating:** start the questionnaire, pick category **Game**, and answer **No** to violence, sexuality, language, drugs and gambling. For "Can users interact or exchange content?", answer **Yes**: players see each other's display names on leaderboards. It should come out as Everyone / PEGI 3.
 - **Target audience:** choose **13–15, 16–17 and 18+**. Picking ages under 13 brings in Google's extra Families rules.
 - **News app:** No.

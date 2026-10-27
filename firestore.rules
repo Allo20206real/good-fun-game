@@ -178,12 +178,22 @@ service cloud.firestore {
       return f.last.toMillis() - f.start.toMillis();
     }
     function afkPaid(a, b, f) {
-      return b.afkClaim == f.start && a.get('afkClaim', null) != f.start
+      return b.afkClaim == f.start && a.get('afkClaim', null) != f.start && b.get('ads', null) == a.get('ads', null)
         && afkGain(a, b, afkTime(f) >= 18000000, afkCap(int(math.floor(afkTime(f) / 600000.0)) * 10));
     }
 
+    // Watching a video ad pays 25 coins, at most 5 times a UTC day: ads = { day, n }
+    function adDay() {
+      return int(math.floor(request.time.toMillis() / 86400000.0));
+    }
+    function adPaid(a, b) {
+      return b.ads.keys().hasOnly(['day', 'n']) && b.ads.day == adDay()
+        && b.ads.n == (a.get('ads', {'day': -1, 'n': 0}).day == adDay() ? a.ads.n : 0) + 1 && b.ads.n <= 5
+        && b.coins - a.coins == 25 && b.skins == a.skins && b.get('afkClaim', null) == a.get('afkClaim', null);
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening', 'afkClaim'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening', 'afkClaim', 'ads'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
@@ -212,7 +222,7 @@ service cloud.firestore {
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
         && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
         && !('alvin' in request.resource.data) && !('codes' in request.resource.data) && !('opening' in request.resource.data)
-        && !('afkClaim' in request.resource.data);
+        && !('afkClaim' in request.resource.data) && !('ads' in request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -232,6 +242,7 @@ service cloud.firestore {
         // Cases and the AFK Room have their own rules below
         && op(request.resource.data) == op(resource.data)
         && request.resource.data.get('afkClaim', null) == resource.data.get('afkClaim', null)
+        && request.resource.data.get('ads', null) == resource.data.get('ads', null)
         // The Secret Alvin Tower: a climb starts, or the one prize is collected
         && (al(request.resource.data) == al(resource.data)
             || alvinStart(al(resource.data), al(request.resource.data))
@@ -276,11 +287,12 @@ service cloud.firestore {
         && (caseBuy(resource.data, request.resource.data) || crateBuy(resource.data, request.resource.data)
             || caseClaim(resource.data, request.resource.data));
 
-      // Collecting AFK Room rewards
+      // Collecting AFK Room rewards, or coins for watching an ad
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'afkClaim'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'afkClaim', 'ads'])
         && request.resource.data.coins is int && request.resource.data.coins >= 0 && request.resource.data.skins.size() <= 40
-        && afkPaid(resource.data, request.resource.data, get(/databases/$(database)/documents/afk/$(uid)).data);
+        && (adPaid(resource.data, request.resource.data)
+            || afkPaid(resource.data, request.resource.data, get(/databases/$(database)/documents/afk/$(uid)).data));
 
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;
