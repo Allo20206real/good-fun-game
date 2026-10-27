@@ -60,17 +60,19 @@ service cloud.firestore {
       return g.get('days', []).toSet().intersection(g.get('xdays', []).toSet()).size();
     }
 
-    // Secret Alvin Tower: { start, done }. Each climb notes its start with the server's clock; reaching the
-    // top once pays 3000 coins, if at least 2.5 minutes have passed since that start.
+    // Secret Alvin Tower: { start, done, crate }. Each climb notes its start with the server's clock; reaching the
+    // top once pays 3000 coins, if at least 2.5 minutes have passed since that start. Every such climb also opens
+    // one Alvin Crate, and 'crate' remembers which climb's crate was opened last.
     function al(d) {
       return d.get('alvin', {});
     }
     function alvinStart(a, b) {
-      return b.keys().hasOnly(['start', 'done']) && b.start == request.time && b.get('done', false) == a.get('done', false);
+      return b.keys().hasOnly(['start', 'done', 'crate']) && b.start == request.time && b.get('done', false) == a.get('done', false)
+        && b.get('crate', null) == a.get('crate', null);
     }
     function alvinClaim(a, b) {
-      return a.get('done', false) == false && b.keys().hasOnly(['start', 'done']) && b.done == true
-        && 'start' in a && b.start == a.start
+      return a.get('done', false) == false && b.keys().hasOnly(['start', 'done', 'crate']) && b.done == true
+        && 'start' in a && b.start == a.start && b.get('crate', null) == a.get('crate', null)
         && request.time.toMillis() - a.start.toMillis() >= 150000;
     }
 
@@ -103,20 +105,23 @@ service cloud.firestore {
       return (r >= e0 ? 1 : 0) + (r >= e1 ? 1 : 0) + (r >= e2 ? 1 : 0) + (r >= e3 ? 1 : 0) + (r >= e4 ? 1 : 0) + (r >= e5 ? 1 : 0);
     }
     function caseIdx(t, r) {
-      return t == 'basic' ? idx(r, 350, 600, 750, 850, 900, 980)
+      return t == 'alvin' ? idx(r, 300, 550, 700, 820, 920, 970) + (r >= 999 ? 1 : 0)
+        : t == 'basic' ? idx(r, 350, 600, 750, 850, 900, 980)
         : t == 'legendary' ? idx(r, 270, 470, 620, 770, 890, 950)
         : t == 'ultra' ? idx(r, 300, 500, 650, 770, 920, 970)
         : idx(r, 250, 450, 650, 800, 900, 970);
     }
     // The cube of each item ('' for coins), and its coins (for a cube: what it pays if you already own it)
     function caseSkin(t, i) {
-      return (t == 'basic' ? ['', '', 'neon', 'candy', '', 'ruby', 'gold']
+      return (t == 'alvin' ? ['', '', 'sigmagold', '', 'sigmashadow', '', 'sigmagiga', 'wow']
+        : t == 'basic' ? ['', '', 'neon', 'candy', '', 'ruby', 'gold']
         : t == 'legendary' ? ['', '', 'rainbow', 'ruby', 'plasma', '', 'dragon']
         : t == 'ultra' ? ['', '', 'moai', 'plasma', 'dragon', '', 'phoenix']
         : ['', '', 'frostfire', 'dragon', 'phoenix', '', 'diamond'])[i];
     }
     function caseCoins(t, i) {
-      return (t == 'basic' ? [50, 100, 50, 70, 250, 100, 150]
+      return (t == 'alvin' ? [300, 600, 500, 1500, 1000, 5000, 3000, 20000]
+        : t == 'basic' ? [50, 100, 50, 70, 250, 100, 150]
         : t == 'legendary' ? [500, 900, 500, 500, 600, 2500, 1500]
         : t == 'ultra' ? [5000, 9000, 7000, 6000, 8000, 25000, 15000]
         : [8000, 13000, 10000, 10000, 15000, 30000, 25000])[i];
@@ -124,13 +129,18 @@ service cloud.firestore {
     function prizeAt(t, i) {
       return {'skin': caseSkin(t, i), 'coins': caseCoins(t, i)};
     }
+    // The WoW Cube (Alvin Crate item 7) only counts when the climb started on an even millisecond: 1 in 2000.
+    // Otherwise it is the 5000 coins (item 5).
+    function wowCheck(o, i) {
+      return (i == 7 && o.climb.toMillis() % 2 == 1) ? 5 : i;
+    }
     function casePrize(o) {
-      return prizeAt(o.type, caseIdx(o.type, o.at.toMillis() % 1000));
+      return prizeAt(o.type, wowCheck(o, caseIdx(o.type, o.at.toMillis() % 1000)));
     }
     function caseBuy(a, b) {
       return op(b).keys().hasOnly(['type', 'at', 'done']) && op(b).type in ['basic', 'legendary', 'ultra', 'limited']
         && op(b).at == request.time && op(b).done == false && op(a).get('done', true) == true
-        && a.coins - b.coins == casePrice(op(b).type) && b.skins == a.skins
+        && a.coins - b.coins == casePrice(op(b).type) && b.skins == a.skins && al(b) == al(a)
         // The Limited Case is sold until 10 November 2026
         && (op(b).type != 'limited' || request.time < timestamp.date(2026, 11, 10));
     }
@@ -140,9 +150,17 @@ service cloud.firestore {
         : (b.coins == a.coins && b.skins.size() == a.skins.size() + 1 && b.skins.hasAll(a.skins) && p.skin in b.skins);
     }
     function caseClaim(a, b) {
-      return op(a).get('done', true) == false && op(b).keys().hasOnly(['type', 'at', 'done'])
-        && op(b).type == op(a).type && op(b).at == op(a).at && op(b).done == true
-        && caseGain(a, b, casePrize(op(a)));
+      return op(a).get('done', true) == false && op(b).diff(op(a)).affectedKeys().hasOnly(['done']) && op(b).done == true
+        && al(b) == al(a) && caseGain(a, b, casePrize(op(a)));
+    }
+    // A free Alvin Crate for a climb of the Secret Alvin Tower that took at least 2.5 minutes, once per climb
+    function crateBuy(a, b) {
+      return op(b).keys().hasOnly(['type', 'at', 'done', 'climb']) && op(b).type == 'alvin'
+        && op(b).at == request.time && op(b).done == false && op(a).get('done', true) == true
+        && b.coins == a.coins && b.skins == a.skins
+        && op(b).climb == al(a).start && request.time.toMillis() - al(a).start.toMillis() >= 150000
+        && al(a).get('crate', null) != al(a).start
+        && al(b).diff(al(a)).affectedKeys().hasOnly(['crate']) && al(b).crate == al(a).start;
     }
 
     function validUser(d) {
@@ -150,7 +168,7 @@ service cloud.firestore {
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
-        && d.skins is list && d.skins.size() <= 30
+        && d.skins is list && d.skins.size() <= 40
         && d.groups is list && d.groups.size() <= 10
         && d.wins1p is int && d.losses1p is int && d.wins2p is int && d.losses2p is int
         && d.daily is map && d.streak is map
@@ -210,7 +228,8 @@ service cloud.firestore {
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && !request.resource.data.skins.toSet().difference(resource.data.skins.toSet()).hasAny(['champion', 'gambler',
-                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond'])
+                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond', 'sigmagold', 'sigmashadow',
+                  'sigmagiga', 'wow'])
                 && resource.data.coins - request.resource.data.coins >= 50)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
@@ -232,12 +251,13 @@ service cloud.firestore {
                 && 'champion' in request.resource.data.skins
                 && prizeClaim(tw(resource.data), tw(request.resource.data))));
 
-      // Cases, kept apart from the rule above so each check stays small: a save that only buys a case
-      // or collects its prize
+      // Cases, kept apart from the rule above so each check stays small: a save that only buys a case,
+      // opens an Alvin Crate or collects the prize
       allow update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'opening'])
-        && request.resource.data.coins is int && request.resource.data.skins.size() <= 30
-        && (caseBuy(resource.data, request.resource.data) || caseClaim(resource.data, request.resource.data));
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'opening', 'alvin'])
+        && request.resource.data.coins is int && request.resource.data.skins.size() <= 40
+        && (caseBuy(resource.data, request.resource.data) || crateBuy(resource.data, request.resource.data)
+            || caseClaim(resource.data, request.resource.data));
 
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;

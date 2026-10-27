@@ -154,6 +154,10 @@
   .reel-tile canvas { width: 64px; height: 64px; }
   .reel-tile .coin-big { width: 44px; height: 44px; margin: 10px 0; }
   .reel-mark { position: absolute; top: 0; bottom: 0; left: 50%; width: 3px; margin-left: -1.5px; background: #facc15; box-shadow: 0 0 12px #facc15; }
+  #caseScreen { background: #000; }
+  .crate-odds { width: min(420px, 100%); text-align: left; font-size: 13px; margin-top: 8px; }
+  .crate-odds summary { cursor: pointer; color: var(--muted); font-weight: 600; text-align: center; }
+  #alvinCrateBtn { width: min(320px, 100%); margin-top: 12px; }
   .case-win { display: flex; flex-direction: column; align-items: center; gap: 6px; }
   .case-win canvas { width: 120px; height: 120px; }
   .case-win .coin-big { width: 80px; height: 80px; }
@@ -678,6 +682,11 @@ const SKINS = [
   { id: 'phoenix', name: 'Phoenix', price: 0, prize: true, box: true },
   { id: 'frostfire', name: 'Frostfire', price: 0, prize: true, box: true },
   { id: 'diamond', name: 'Diamond', price: 0, prize: true, box: true },
+  // Only from the Alvin Crate (finishing the Secret Alvin Tower)
+  { id: 'sigmagold', name: 'Golden Sigma', price: 0, prize: true, box: 'alvin' },
+  { id: 'sigmashadow', name: 'Shadow Sigma', price: 0, prize: true, box: 'alvin' },
+  { id: 'sigmagiga', name: 'Giga Sigma', price: 0, prize: true, box: 'alvin' },
+  { id: 'wow', name: 'WoW Cube', price: 0, prize: true, box: 'alvin' },
 ];
 
 // Cases. Each item's chance is w out of 1000. The prize comes from the server's clock when the case is
@@ -702,14 +711,21 @@ const CASES = [
     { w: 250, coins: 8000, r: 'common' }, { w: 200, coins: 13000, r: 'rare' }, { w: 200, skin: 'frostfire', dupe: 10000, r: 'limited' },
     { w: 150, skin: 'dragon', dupe: 10000, r: 'legendary' }, { w: 100, skin: 'phoenix', dupe: 15000, r: 'mythic' }, { w: 70, coins: 30000, r: 'legendary' },
     { w: 30, skin: 'diamond', dupe: 25000, r: 'limited' } ] },
+  // One free crate for each finished climb of the Secret Alvin Tower. The WoW Cube's 1 in 1000 only counts
+  // when the climb's start time (in milliseconds) is even, which makes it 1 in 2000; otherwise it's 5000 coins.
+  { id: 'alvin', name: 'Alvin Crate', price: 0, color: '#facc15', crate: true, items: [
+    { w: 300, coins: 300, r: 'common' }, { w: 250, coins: 600, r: 'common' }, { w: 150, skin: 'sigmagold', dupe: 500, r: 'rare' },
+    { w: 120, coins: 1500, r: 'rare' }, { w: 100, skin: 'sigmashadow', dupe: 1000, r: 'epic' }, { w: 50, coins: 5000, r: 'legendary', show: 50.5, fallback: true },
+    { w: 29, skin: 'sigmagiga', dupe: 3000, r: 'legendary' }, { w: 1, skin: 'wow', dupe: 20000, r: 'mythic', show: 0.5, half: true } ] },
 ];
 const caseOn = c => !c.limited || Date.now() < CASE_LIMITED_END;
-function casePrize(type, atMs) {
+function casePrize(type, atMs, climbMs = 0) {
   const c = CASES.find(x => x.id === type), r = atMs % 1000;
   let end = 0;
-  for (const it of c.items) { end += it.w; if (r < end) return it; }
+  for (const it of c.items) { end += it.w; if (r < end) return it.half && climbMs % 2 ? c.items.find(x => x.fallback) : it; }
   return c.items[c.items.length - 1];
 }
+const pct = it => `${+((it.show ?? it.w) / 10).toFixed(2)}%`;
 // A Firestore timestamp ("2026-10-27T08:45:12.123456Z") in whole milliseconds, like the rules' toMillis()
 function tsMs(s) {
   const frac = (String(s).match(/\.(\d+)/) || [, ''])[1];
@@ -1291,7 +1307,7 @@ function shopTab() {
     return `<div class="skin-card">${onSale ? '<span class="tag">50% OFF</span>' : ''}
       <canvas data-skin-anim="${s.id}" width="144" height="144"></canvas>
       <b>${s.name}</b>
-      <span class="price fine">${owned ? 'Owned' : s.box ? 'Case cube' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
+      <span class="price fine">${owned ? 'Owned' : s.box === 'alvin' ? 'Alvin Crate cube' : s.box ? 'Case cube' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
       ${btn}</div>`;
   }).join('');
   return `
@@ -1305,10 +1321,8 @@ const itemName = it => it.skin ? SKINS.find(s => s.id === it.skin).name : `${it.
 const itemIcon = it => it.skin ? `<canvas data-skin-anim="${it.skin}" width="128" height="128"></canvas>` : '<span class="coin-big"></span>';
 function casesTab() {
   const pending = me?.opening && me.opening.done === false;
-  const cards = CASES.filter(caseOn).map(c => {
-    const odds = c.items.slice().sort((a, b) => a.w - b.w).map(it => `<li style="--r:${RARITY[it.r][1]}">${it.skin ? `<canvas data-skin="${it.skin}" width="44" height="44"></canvas>` : '<span class="coin-big"></span>'}
-      <span>${itemName(it)}${it.skin && me?.skins.includes(it.skin) ? ' <span class="fine">(owned: ' + it.dupe.toLocaleString() + ' coins)</span>' : ''}</span>
-      <span class="rarity">${RARITY[it.r][0]}</span><span class="pct">${(it.w / 10).toFixed(it.w % 10 ? 1 : 0)}%</span></li>`).join('');
+  const cards = CASES.filter(c => !c.crate && caseOn(c)).map(c => {
+    const odds = oddsList(c);
     let btn;
     if (!ONLINE) btn = '<button disabled>App and website only</button>';
     else if (!me) btn = '<button class="ghost" data-act="goto" data-to="profile">Log in to open</button>';
@@ -1325,6 +1339,11 @@ function casesTab() {
     <p class="fine">Open a case to win coins or a cube. Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire and Diamond only from the Limited Case. If you get a cube you already own, you get coins instead.</p>
     ${pending ? `<div class="card"><b>You have a case waiting to be opened.</b><button data-act="claimCase">Open it</button></div>` : ''}
     <div class="case-grid">${cards}</div>`;
+}
+function oddsList(c) {
+  return c.items.slice().sort((a, b) => (a.show ?? a.w) - (b.show ?? b.w)).map(it => `<li style="--r:${RARITY[it.r][1]}">${it.skin ? `<canvas data-skin="${it.skin}" width="44" height="44"></canvas>` : '<span class="coin-big"></span>'}
+      <span>${itemName(it)}${it.skin && me?.skins.includes(it.skin) ? ' <span class="fine">(owned: ' + it.dupe.toLocaleString() + ' coins)</span>' : ''}</span>
+      <span class="rarity">${RARITY[it.r][0]}</span><span class="pct">${pct(it)}</span></li>`).join('');
 }
 function drawCaseBox(c, x, y, w, color, t) {
   const h = w * 0.62, l = x - w / 2, top = y - h / 2 + w * 0.06;
@@ -1378,7 +1397,7 @@ async function openCase(id) {
 async function collectCase() {
   let d = await loadUser(auth1);
   if (!d?.opening || d.opening.done !== false) { renderApp(); return; }
-  const o = d.opening, cs = CASES.find(x => x.id === o.type), it = casePrize(o.type, tsMs(o.at));
+  const o = d.opening, cs = CASES.find(x => x.id === o.type), it = casePrize(o.type, tsMs(o.at), o.climb ? tsMs(o.climb) : 0);
   lastCase = o.type;
   spinCase(cs, it);
   for (let tries = 0; ; tries++) {
@@ -1446,11 +1465,35 @@ function showCaseWin() {
     else { sfx(760, 0.18, 'square', 0.04, 1.5); buzz('success'); }
   }
   const again = $('caseAgain');
-  again.classList.toggle('hidden', !cs || !caseOn(cs) || !me || me.coins < cs.price);
+  again.classList.toggle('hidden', !cs || cs.crate || !caseOn(cs) || !me || me.coins < cs.price);
   if (cs) again.innerHTML = `Open another (${coinHtml(cs.price.toLocaleString())})`;
   $('caseBtns').classList.remove('hidden');
 }
-$('caseClose').onclick = () => { $('caseScreen').classList.add('hidden'); renderApp(); };
+$('caseClose').onclick = () => { $('caseScreen').classList.add('hidden'); renderApp(); if (lastCase === 'alvin' && !$('over').classList.contains('hidden')) crateDone(); };
+
+// The Alvin Crate: each finished climb of the Secret Alvin Tower opens one, for free
+async function openAlvinCrate() {
+  const d = await loadUser(auth1);
+  if (!d) throw new GameError('Pick a username first.');
+  me = d;
+  if (d.opening && d.opening.done === false) return collectCase();
+  const a = d.alvin || {};
+  if (!a.start) throw new GameError('Climb the tower first.');
+  if (a.crate === a.start) throw new GameError('You already opened the crate for this climb. Climb again for another!');
+  await fs(auth1, 'POST', ':commit', { body: { writes: [{
+    update: { name: docName('users/' + auth1.uid), fields: {
+      opening: { mapValue: { fields: { type: { stringValue: 'alvin' }, done: { booleanValue: false }, climb: { timestampValue: a.start } } } },
+      alvin: { mapValue: { fields: { crate: { timestampValue: a.start } } } } } },
+    updateMask: { fieldPaths: ['opening.type', 'opening.done', 'opening.climb', 'alvin.crate'] },
+    updateTransforms: [{ fieldPath: 'opening.at', setToServerValue: 'REQUEST_TIME' }],
+  }] } }).catch(e => { throw new GameError(/refused/.test(e.message) ? "The crate couldn't be opened. The climb has to take at least 2.5 minutes." : e.message); });
+  lastCase = 'alvin';
+  return collectCase();
+}
+function crateDone() {
+  const b = $('alvinCrateBtn');
+  if (b) { b.disabled = true; b.textContent = 'Crate opened'; }
+}
 $('caseAgain').onclick = () => busy($('caseAgain'), () => openCase(lastCase));
 
 // ---------- Groups tab ----------
@@ -3256,23 +3299,58 @@ function drawSkin(c, x, y, s, skin, t) {
     poly('#2b2f35', [0.31, 0.8], [0.69, 0.8], [0.68, 0.825], [0.32, 0.825]);                 // mouth
     poly('#8b9098', [0.33, 0.825], [0.67, 0.825], [0.64, 0.88], [0.36, 0.88]);               // lower lip
     poly('rgba(0,0,0,.25)', [0, 0.9], [1, 0.9], [1, 1], [0, 1]);                             // chin shadow
-  } else if (skin === 'sigma') {
+  } else if (skin === 'sigma' || skin === 'sigmagold' || skin === 'sigmashadow' || skin === 'sigmagiga') {
+    const look = {
+      sigma: ['#3a3d46', '#0a0a0d', '#000', '#eef4ff', '#cfe3ff', '#8a93a6'],
+      sigmagold: ['#fff1a8', '#b8860b', '#1a1200', '#1a1200', '#fff6c2', '#facc15'],
+      sigmashadow: ['#2a0f3d', '#050008', '#000', '#c084fc', '#a855f7', '#6b21a8'],
+      sigmagiga: ['#38bdf8', '#0c1d4f', '#000', '#ffffff', '#7dd3fc', '#facc15'],
+    }[skin];
     const g = c.createLinearGradient(l, top, l + s, top + s);
-    g.addColorStop(0, '#3a3d46'); g.addColorStop(1, '#0a0a0d');
+    g.addColorStop(0, look[0]); g.addColorStop(1, look[1]);
     c.fillStyle = g; c.fillRect(l, top, s, s);
+    if (skin === 'sigmagold') {   // a shine sweeping across
+      c.save(); c.beginPath(); c.rect(l, top, s, s); c.clip();
+      const sx = l + (((t * 0.6) % 1.6) - 0.3) * s * 2;
+      c.fillStyle = 'rgba(255,255,255,.45)';
+      c.beginPath(); c.moveTo(sx, top); c.lineTo(sx + s * 0.2, top); c.lineTo(sx - s * 0.3, top + s); c.lineTo(sx - s * 0.5, top + s); c.fill();
+      c.restore();
+    }
+    if (skin === 'sigmashadow') {   // smoke curling up
+      c.save(); c.beginPath(); c.rect(l, top, s, s); c.clip();
+      for (let k = 0; k < 3; k++) {
+        const p = (t * 0.3 + k / 3) % 1;
+        c.fillStyle = `rgba(168,85,247,${0.25 * (1 - p)})`;
+        c.beginPath(); c.arc(l + s * (0.25 + k * 0.25) + Math.sin(t * 2 + k) * s * 0.05, top + s * (1 - p), s * (0.12 + p * 0.15), 0, Math.PI * 2); c.fill();
+      }
+      c.restore();
+    }
     // Sunglasses
-    c.fillStyle = '#000';
+    c.fillStyle = look[2];
     c.fillRect(l + s * 0.12, top + s * 0.2, s * 0.76, s * 0.06);
     c.beginPath(); c.roundRect ? c.roundRect(l + s * 0.14, top + s * 0.22, s * 0.3, s * 0.16, s * 0.05) : c.rect(l + s * 0.14, top + s * 0.22, s * 0.3, s * 0.16); c.fill();
     c.beginPath(); c.roundRect ? c.roundRect(l + s * 0.56, top + s * 0.22, s * 0.3, s * 0.16, s * 0.05) : c.rect(l + s * 0.56, top + s * 0.22, s * 0.3, s * 0.16); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(l + s * 0.18, top + s * 0.24, s * 0.08, s * 0.03); c.fillRect(l + s * 0.6, top + s * 0.24, s * 0.08, s * 0.03);
+    if (skin === 'sigmashadow') {   // red eyes glowing through the glasses
+      c.fillStyle = '#ef4444'; c.shadowColor = '#ef4444'; c.shadowBlur = s * 0.15;
+      c.fillRect(l + s * 0.24, top + s * 0.28, s * 0.1, s * 0.04); c.fillRect(l + s * 0.66, top + s * 0.28, s * 0.1, s * 0.04);
+      c.shadowBlur = 0;
+    } else {
+      c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(l + s * 0.18, top + s * 0.24, s * 0.08, s * 0.03); c.fillRect(l + s * 0.6, top + s * 0.24, s * 0.08, s * 0.03);
+    }
+    if (skin === 'sigmagiga') {   // a crown on top
+      const cw = s * 0.5, ch = s * 0.13, cl = x - cw / 2, cb = top + s * 0.17;
+      c.fillStyle = '#facc15'; c.shadowColor = '#facc15'; c.shadowBlur = s * 0.1;
+      c.beginPath(); c.moveTo(cl, cb); c.lineTo(cl, cb - ch); c.lineTo(cl + cw * 0.25, cb - ch * 0.5); c.lineTo(x, cb - ch * 1.2);
+      c.lineTo(cl + cw * 0.75, cb - ch * 0.5); c.lineTo(cl + cw, cb - ch); c.lineTo(cl + cw, cb); c.closePath(); c.fill();
+      c.shadowBlur = 0;
+    }
     // The sigma
-    c.shadowColor = '#cfe3ff'; c.shadowBlur = s * (0.12 + 0.06 * Math.sin(t * 3));
-    c.fillStyle = '#eef4ff'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.font = `900 ${Math.round(s * 0.5)}px system-ui, sans-serif`;
+    c.shadowColor = look[4]; c.shadowBlur = s * (0.12 + 0.06 * Math.sin(t * 3));
+    c.fillStyle = look[3]; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = `900 ${Math.round(s * (skin === 'sigmagiga' ? 0.56 : 0.5))}px system-ui, sans-serif`;
     c.fillText('Σ', x, top + s * 0.68);
     c.shadowBlur = 0;
-    c.strokeStyle = '#8a93a6'; c.lineWidth = Math.max(1, s * 0.04); c.strokeRect(l + c.lineWidth / 2, top + c.lineWidth / 2, s - c.lineWidth, s - c.lineWidth);
+    c.strokeStyle = look[5]; c.lineWidth = Math.max(1, s * 0.04); c.strokeRect(l + c.lineWidth / 2, top + c.lineWidth / 2, s - c.lineWidth, s - c.lineWidth);
   } else if (skin === 'ruby') {
     const g = c.createLinearGradient(l, top, l + s, top + s);
     g.addColorStop(0, '#ff8a9b'); g.addColorStop(0.5, '#e0123a'); g.addColorStop(1, '#6d0016');
@@ -3386,6 +3464,17 @@ function drawSkin(c, x, y, s, skin, t) {
       c.beginPath(); c.moveTo(sx - r, sy); c.lineTo(sx, sy + r * 0.2); c.lineTo(sx + r, sy); c.lineTo(sx, sy - r * 0.2); c.fill();
     }
     c.strokeStyle = '#ffffff'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(l, top, s, s);
+  } else if (skin === 'wow') {
+    const g = c.createLinearGradient(l, top, l + s, top + s);
+    for (let i = 0; i <= 4; i++) g.addColorStop(i / 4, `hsl(${(t * 90 + i * 80) % 360}, 95%, 55%)`);
+    c.fillStyle = g; c.fillRect(l, top, s, s);
+    c.shadowColor = '#fff'; c.shadowBlur = s * (0.15 + 0.1 * Math.sin(t * 4));
+    c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = `900 ${Math.round(s * 0.36)}px system-ui, sans-serif`;
+    c.fillText('WoW', x, y + s * 0.02);
+    c.shadowBlur = 0;
+    const lw = Math.max(1, s * 0.05);
+    c.strokeStyle = '#fff'; c.lineWidth = lw; c.strokeRect(l + lw / 2, top + lw / 2, s - lw, s - lw);
   } else if (skin === 'gambler' || skin === 'gambler2') {
     drawGambler(c, x, y, s, t, null, skin === 'gambler2');
   } else if (skin === 'champion' && championImg.complete && championImg.naturalWidth) {
@@ -4168,7 +4257,15 @@ async function showAlvinResult(t, ms) {
     const msg = /refused/.test(e.message) ? "The coins weren't saved: the server says that climb was faster than possible." : e.message;
     lines.push(`<div class="line down">${escapeHtml(msg)}</div>`);
   }
-  if (tower === t) results.innerHTML = lines.join('');
+  const climbOk = me && await t.runReady && ms >= ALVIN_MIN_MS;
+  if (climbOk) lines.push(`<button id="alvinCrateBtn" class="coin-btn">Open the Alvin Crate</button>
+    <details class="crate-odds"><summary>What's inside</summary><ul class="odds">${oddsList(CASES.find(c => c.id === 'alvin'))}</ul></details>`);
+  if (tower === t) {
+    results.innerHTML = lines.join('');
+    drawStaticSkins(results);
+    const cb = $('alvinCrateBtn');
+    if (cb) cb.onclick = () => busy(cb, () => openAlvinCrate());
+  }
   $('againBtn').disabled = false;
 }
 
