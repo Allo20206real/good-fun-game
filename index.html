@@ -451,9 +451,9 @@ const ONLINE = !!(cfg.apiKey && cfg.projectId);
 const MULTIPLAYER = ONLINE && !!cfg.databaseURL;
 const PRIVACY_URL = 'https://bounceduel.se/privacy.html';
 
-// Captcha on new accounts (website only). This is Cloudflare Turnstile's test key, which always passes: put the
-// real site key from Cloudflare here. Tests against the emulator skip it unless they set window.BD_CAPTCHA.
-const TURNSTILE_SITEKEY = '1x00000000000000000000AA';
+// Captcha on new accounts (website only): Cloudflare Turnstile's site key for bounceduel.se (it's public, unlike the
+// secret key). Tests against the emulator skip it unless they set window.BD_CAPTCHA.
+const TURNSTILE_SITEKEY = '0x4AAAAAAFoNo_990rURcJWF';
 // Ads on the website (Google AdSense). Empty means no ads on the website. The app has its own (mobile/ads.ts).
 const ADSENSE = { client: '', bannerSlot: '' };   // client looks like 'ca-pub-1234567890123456'
 const IN_APP = !!window.ReactNativeWebView;

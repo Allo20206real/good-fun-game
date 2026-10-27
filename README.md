@@ -76,11 +76,11 @@ The AFK Room (on the Play tab) pays you for leaving the game open: 10 coins for 
 
 Players can watch a video ad for 25 coins, up to 5 times a day (the rules count them per day), and the menus show a small banner, never during a match. In the app the ads come from AdMob; on the website from AdSense. All ads are family-safe and non-personalised. New accounts on the website pass a Cloudflare Turnstile robot check (the app doesn't need it).
 
-Until the real IDs are filled in, the app shows Google's test ads and the website shows no ads; the robot check uses Cloudflare's test key, which always passes. To go live:
+Until the real IDs are filled in, the app shows Google's test ads and the website shows no ads; the robot check already uses the real Cloudflare key. To go live:
 
 - **AdMob (app):** make an Android (and iOS) app in AdMob, then put its app ID in `mobile/app.json` (the `react-native-google-mobile-ads` plugin) and the banner and rewarded ad unit IDs in `mobile/ads.ts`. In AdMob, set the app as directed at children / mixed audience.
 - **AdSense (website):** put the publisher ID (`ca-pub-...`) and a banner slot ID in `ADSENSE` in `index.html`. Video ads for coins on the website need AdSense's H5 games ads to be approved for bounceduel.se.
-- **Turnstile:** make a Turnstile widget in Cloudflare for `bounceduel.se` and put its site key in `TURNSTILE_SITEKEY` in `index.html`.
+- **Turnstile:** done; the site key for `bounceduel.se` is `TURNSTILE_SITEKEY` in `index.html`.
 
 ## Cases
 
