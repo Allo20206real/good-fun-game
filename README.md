@@ -72,6 +72,10 @@ A new tower is built every Monday (00:00 UTC), the same one for everyone. A clim
 
 The AFK Room (on the Play tab) pays you for leaving the game open: 10 coins for every 10 minutes, up to 300, and after 5 hours the Sleepy cube (or 500 bonus coins if you already have it). Then a new round starts. The game checks in with the server every minute, and if it is closed for more than 5 minutes the time starts over, so only real time in the room counts. "Collect and leave" pays what you've earned.
 
+## Badges
+
+Badges show next to a player's name in leaderboards, groups, their profile and above their cube in online matches. In Profile → Badges each badge you own has an on/off switch; up to 3 can be on at once, and badges are on until you turn them off. Right now there is one badge, **Admin**, and only Allo20206 has it. Who owns which badge is set in `BADGES` in `index.html` and in `badgesOk` in `firestore.rules`, so nobody can give themselves one.
+
 ## Ads and the robot check
 
 Players can watch a video ad for 25 coins, up to 5 times a day (the rules count them per day), and the menus show a small banner, never during a match. In the app the ads come from AdMob; on the website from AdSense. All ads are family-safe and non-personalised. New accounts on the website pass a Cloudflare Turnstile robot check (the app doesn't need it).

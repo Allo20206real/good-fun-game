@@ -91,6 +91,10 @@
   .code-box { margin: 14px 0; }
   .code-box .row { margin-top: 6px; }
   .code-box .err:empty { display: none; }
+  .badge-pill { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: #fff; background: var(--b); border-radius: 999px; padding: 1px 7px; margin-left: 4px; vertical-align: middle; box-shadow: 0 0 8px var(--b); }
+  .badge-toggles { display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; background: #17171d; color: var(--muted); border: 2px solid #2c2c35; }
+  .badge-toggle.on { color: #fff; border-color: var(--b); box-shadow: 0 0 10px var(--b); }
   .rank-badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; border: 1px solid; border-radius: 999px; padding: 1px 6px; vertical-align: middle; }
   button.friend-btn { display: block; margin: 0 auto; padding: 8px 16px; }
   .friend-panel { width: min(340px, 100%); margin: 4px auto 8px; display: flex; flex-direction: column; gap: 10px; }
@@ -689,6 +693,21 @@ const RANKS = [
 ];
 const rankOf = score => RANKS.reduce((r, x) => (score >= x.at ? x : r), RANKS[0]);
 const nextRank = score => RANKS.find(x => x.at > score);
+// Badges shown next to your name. Who has each badge is fixed here and in firestore.rules (badgesOn), so nobody
+// can give themselves one. Up to 3 can be shown; badges you own are on until you turn them off.
+const ADMIN_UID = window.BD_ADMIN_UID || '4rWjwYNcJracFelFVmJT4Kvwhyd2';   // Allo20206 (tests can point it elsewhere)
+const BADGES = [
+  { id: 'admin', name: 'Admin', icon: '🛡️', color: '#ef4444', owner: uid => uid === ADMIN_UID },
+];
+const BADGE_MAX = 3;
+const ownedBadges = uid => BADGES.filter(b => b.owner(uid)).map(b => b.id);
+// The badges a player shows: what they chose (if they ever changed it), else all they own
+function shownBadges(doc, uid) {
+  const own = ownedBadges(uid);
+  return (Array.isArray(doc?.badgesOn) ? doc.badgesOn : own).filter(id => own.includes(id)).slice(0, BADGE_MAX);
+}
+const badgeHtml = ids => ids.map(id => { const b = BADGES.find(x => x.id === id);
+  return b ? `<span class="badge-pill" style="--b:${b.color}" title="${b.name} badge">${b.icon} ${b.name}</span>` : ''; }).join('');
 const rankBadge = score => { const r = rankOf(score); return `<span class="rank-badge" style="color:${r.color};border-color:${r.color}">${r.name}</span>`; };
 
 const SKINS = [
@@ -1226,6 +1245,7 @@ $('tabBody').addEventListener('click', async e => {
   else if (act === 'buy') busy(b, () => buySkin(b.dataset.id));
   else if (act === 'openCase') busy(b, () => openCase(b.dataset.id));
   else if (act === 'watchAd') busy(b, () => watchAd());
+  else if (act === 'badge') busy(b, () => toggleBadge(b.dataset.id));
   else if (act === 'claimCase') busy(b, () => collectCase());
   else if (act === 'equip') { loadouts[0].skin = b.dataset.id; store.set('bd.loadouts', loadouts); toast('Equipped for Player 1'); renderApp(); }
   else if (act === 'openGroup') { groupView = b.dataset.code; renderApp(); }
@@ -1694,6 +1714,26 @@ function drawAfkRoom() {
   c.globalAlpha = 1;
 }
 
+// ---------- Badges ----------
+function badgesCard() {
+  const own = ownedBadges(auth1.uid), on = shownBadges(me, auth1.uid);
+  return `<div class="code-box"><div class="eyebrow">Badges</div>
+    ${own.length ? `<div class="badge-toggles">${own.map(id => { const b = BADGES.find(x => x.id === id);
+      return `<button class="badge-toggle ${on.includes(id) ? 'on' : ''}" style="--b:${b.color}" data-act="badge" data-id="${id}" aria-pressed="${on.includes(id)}">${b.icon} ${b.name} · ${on.includes(id) ? 'On' : 'Off'}</button>`; }).join('')}</div>
+      <p class="fine">Badges that are on show next to your name for everyone. Up to ${BADGE_MAX} at a time.</p>`
+    : '<p class="fine">You don\'t have any badges yet.</p>'}</div>`;
+}
+async function toggleBadge(id) {
+  if (!ownedBadges(auth1.uid).includes(id)) return;
+  const on = shownBadges(me, auth1.uid);
+  const next = on.includes(id) ? on.filter(x => x !== id) : [...on, id];
+  if (next.length > BADGE_MAX) throw new GameError(`You can show up to ${BADGE_MAX} badges. Turn one off first.`);
+  await updateDoc(auth1, 'users/' + auth1.uid, { badgesOn: next });
+  me.badgesOn = next;
+  const b = BADGES.find(x => x.id === id);
+  toast(`${b.name} badge ${next.includes(id) ? 'on' : 'off'}`); renderApp();
+}
+
 // ---------- Captcha ----------
 let captchaToken = '', captchaLoad = null, captchaFailed = false;   // if it can't load at all, sign-up still works
 const captchaOn = () => ONLINE && !IN_APP && !!TURNSTILE_SITEKEY && (!window.BD_FIREBASE || window.BD_CAPTCHA);
@@ -1811,7 +1851,7 @@ function groupsTab() {
 function lbRows(users) {
   return users.map((u, i) => `<div class="lb-row ${auth1 && u.id === auth1.uid ? 'me' : ''}">
       <span class="rank">${i + 1}</span>
-      <div style="min-width:0"><div class="name">${escapeHtml(u.name || 'Player')} ${rankBadge(u.score || 0)}</div><div class="meta">${u.wins2p || 0} two-player wins · ${u.wins1p || 0} single-player wins</div></div>
+      <div style="min-width:0"><div class="name">${escapeHtml(u.name || 'Player')} ${rankBadge(u.score || 0)}${badgeHtml(shownBadges(u, u.id))}</div><div class="meta">${u.wins2p || 0} two-player wins · ${u.wins1p || 0} single-player wins</div></div>
       <b>${u.score || 0}</b></div>`).join('');
 }
 async function loadGroups() {
@@ -1910,7 +1950,7 @@ function profileTab() {
   if (me) {
     return `
       <div class="card">
-        <div class="eyebrow">Username</div>
+        <div class="eyebrow">Username ${badgeHtml(shownBadges(me, auth1.uid))}</div>
         <form id="nameForm" class="row"><input class="grow" maxlength="16" value="${escapeHtml(me.name)}" aria-label="Username" autocapitalize="off" spellcheck="false"><button class="small">Change</button></form>
         <p class="err" id="nameErr"></p>
         <div class="fine" style="overflow-wrap:anywhere">Logged in with ${escapeHtml(auth1.email || '')}</div>
@@ -1929,6 +1969,7 @@ function profileTab() {
         </dl>
         <p class="fine">How score works: when a two-player match ends, the winner gains points equal to the HP they have left and the loser loses the same amount. Beating the CPU adds +3 on Easy, +6 on Normal and +10 on Hard. Leaving an online match costs 50 points, or what a loss would cost if you're behind.
           Ranks: ${RANKS.map(r => `<b style="color:${r.color}">${r.name}</b> ${r.at}`).join(' · ')}</p>
+        ${badgesCard()}
         <form id="codeForm" class="code-box"><label class="eyebrow" for="codeInput">Got a code?</label>
           <div class="row"><input id="codeInput" class="grow code-input" maxlength="40" placeholder="ENTER CODE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button class="small">Redeem</button></div>
           <p class="err" id="codeErr"></p></form>
@@ -3035,6 +3076,10 @@ function onPhase(m) {
   const o = online;
   if (m.phase === 'place') {
     players = o.ids.map((id, i) => makePlayer(i, o.nameOf(id), safeLoadout(m.p?.[id]), false));
+    const ps = players;
+    getMany(auth1, o.ids.map(id => 'users/' + id)).then(docs => docs.forEach(d => {
+      const q = ps[o.ids.indexOf(d.id)]; if (q) q.badges = shownBadges(d, d.id);
+    })).catch(() => {});
     particles = []; popups = []; elapsed = 0; aimPress = false; shake = 0; secret = null;
     placing = o.myIdx; state = 'place';
     screens.forEach(x => $(x).classList.add('hidden'));
@@ -3863,6 +3908,12 @@ function drawCube(p, ghost) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
   ctx.fillStyle = p.color;
   ctx.fillText(fitText(p.name, Math.max(110, s * 2.4)), p.x, p.y - h - 12);
+  if (p.badges?.length) {   // badges above the name
+    ctx.font = `800 ${Math.round(11 * Math.max(U, 0.8))}px system-ui, sans-serif`;
+    const txt = p.badges.map(id => { const b = BADGES.find(x => x.id === id); return b ? `${b.icon} ${b.name.toUpperCase()}` : ''; }).join('  ');
+    ctx.fillStyle = BADGES.find(x => x.id === p.badges[0])?.color || '#fff';
+    ctx.fillText(txt, p.x, p.y - h - 12 - 17 * Math.max(U, 0.8));
+  }
   const bw = s + 10;
   ctx.fillStyle = '#333'; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw, 5);
   ctx.fillStyle = p.color; ctx.fillRect(p.x - bw / 2, p.y - h - 9, bw * p.hp / p.maxHp, 5);
