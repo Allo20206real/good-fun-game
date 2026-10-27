@@ -68,6 +68,10 @@ Each event also puts one skin on sale at half price.
 
 A new tower is built every Monday (00:00 UTC), the same one for everyone. A climb of 5:00 or less pays 500 coins, once a week. Only a faster time replaces your best. You have 100 HP; every spike takes 10 and it never heals, so at 0 HP the climb is over. The fastest climb when the week ends wins 2000 coins and the Champion skin, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
 
+## AFK Room
+
+The AFK Room (on the Play tab) pays you for leaving the game open: 10 coins for every 10 minutes, up to 300, and after 5 hours the Sleepy cube (or 500 bonus coins if you already have it). Then a new round starts. The game checks in with the server every minute, and if it is closed for more than 5 minutes the time starts over, so only real time in the room counts. "Collect and leave" pays what you've earned.
+
 ## Cases
 
 The Cases tab sells four cases. Each one gives coins or a cube, and a cube you already own pays coins instead.

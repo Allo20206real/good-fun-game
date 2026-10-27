@@ -163,8 +163,27 @@ service cloud.firestore {
         && al(b).diff(al(a)).affectedKeys().hasOnly(['crate']) && al(b).crate == al(a).start;
     }
 
+    // AFK Room: afk/{uid} = { start, last } on the server's clock, with check-ins at most 5 minutes apart.
+    // Collecting pays 10 coins per 10 minutes from start to last (up to 300), plus the Sleepy cube after 5 hours
+    // (500 coins instead if you own it), and saves that start as 'afkClaim' so the same time can't pay twice.
+    function afkCap(c) {
+      return c > 300 ? 300 : c;
+    }
+    function afkGain(a, b, five, c) {
+      return (five && !('sleepy' in a.skins))
+        ? (b.coins - a.coins == c && b.skins.size() == a.skins.size() + 1 && b.skins.hasAll(a.skins) && 'sleepy' in b.skins)
+        : (b.skins == a.skins && b.coins - a.coins == c + (five ? 500 : 0));
+    }
+    function afkTime(f) {
+      return f.last.toMillis() - f.start.toMillis();
+    }
+    function afkPaid(a, b, f) {
+      return b.afkClaim == f.start && a.get('afkClaim', null) != f.start
+        && afkGain(a, b, afkTime(f) >= 18000000, afkCap(int(math.floor(afkTime(f) / 600000.0)) * 10));
+    }
+
     function validUser(d) {
-      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening'])
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening', 'afkClaim'])
         && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
         && d.score is int && d.score >= 0
         && d.coins is int && d.coins >= 0
@@ -192,7 +211,8 @@ service cloud.firestore {
         && request.resource.data.skins.size() == 2
         && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
         && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
-        && !('alvin' in request.resource.data) && !('codes' in request.resource.data) && !('opening' in request.resource.data);
+        && !('alvin' in request.resource.data) && !('codes' in request.resource.data) && !('opening' in request.resource.data)
+        && !('afkClaim' in request.resource.data);
 
       allow update: if signedIn() && request.auth.uid == uid
         && validUser(request.resource.data)
@@ -209,8 +229,9 @@ service cloud.firestore {
         && (gb(request.resource.data) == gb(resource.data) || bossWin(gb(resource.data), gb(request.resource.data)))
         // Codes only change by redeeming one
         && (request.resource.data.get('codes', []) == resource.data.get('codes', []) || redeem())
-        // Cases are bought and collected by the next rule
+        // Cases and the AFK Room have their own rules below
         && op(request.resource.data) == op(resource.data)
+        && request.resource.data.get('afkClaim', null) == resource.data.get('afkClaim', null)
         // The Secret Alvin Tower: a climb starts, or the one prize is collected
         && (al(request.resource.data) == al(resource.data)
             || alvinStart(al(resource.data), al(request.resource.data))
@@ -229,7 +250,7 @@ service cloud.firestore {
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && !request.resource.data.skins.toSet().difference(resource.data.skins.toSet()).hasAny(['champion', 'gambler',
                   'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond', 'sigmagold', 'sigmashadow',
-                  'sigmagiga', 'wow'])
+                  'sigmagiga', 'wow', 'sleepy'])
                 && resource.data.coins - request.resource.data.coins >= 50)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && request.resource.data.skins.hasAll(resource.data.skins)
@@ -259,8 +280,25 @@ service cloud.firestore {
         && (caseBuy(resource.data, request.resource.data) || crateBuy(resource.data, request.resource.data)
             || caseClaim(resource.data, request.resource.data));
 
+      // Collecting AFK Room rewards
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'afkClaim'])
+        && request.resource.data.coins is int && request.resource.data.skins.size() <= 40
+        && afkPaid(resource.data, request.resource.data, get(/databases/$(database)/documents/afk/$(uid)).data);
+
       // Players can delete their own account
       allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // AFK Room time: a new round starts now, or a check-in within 5 minutes of the last one moves 'last' to now
+    match /afk/{uid} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['start', 'last'])
+        && request.resource.data.last == request.time
+        && (request.resource.data.start == request.time
+            || (resource != null && request.resource.data.start == resource.data.start
+                && request.time.toMillis() - resource.data.last.toMillis() <= 300000));
     }
 
     // Tower climbs. One doc per player per week; the server's clock times the climb.
