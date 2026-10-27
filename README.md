@@ -66,7 +66,7 @@ Each event also puts one skin on sale at half price.
 
 ### Tower tournament
 
-A new tower is built every Monday (00:00 UTC), the same one for everyone. A climb of 5:00 or less pays 500 coins, once a week. Only a faster time replaces your best. You have 100 HP; every spike takes 10 and it never heals, so at 0 HP the climb is over. The fastest climb when the week ends wins 2000 coins and the Champion skin, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
+A new tower is built every Monday (00:00 UTC), the same one for everyone. A climb of 5:00 or less pays 500 coins, once a week. Only a faster time replaces your best. You have 100 HP; every spike takes 10 and it never heals, so at 0 HP the climb is over. The fastest climb when the week ends wins 10,000 coins, collected the next time the winner opens the game. The server times each climb from its start, so a saved time can't be faster than the real one.
 
 ## AFK Room
 

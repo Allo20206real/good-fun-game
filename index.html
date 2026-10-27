@@ -692,7 +692,7 @@ const SKINS = [
   { id: 'galaxy', name: 'Galaxy', price: 650 },
   { id: 'rainbow', name: 'Rainbow', price: 1000 },
   { id: 'moai', name: 'Moai', price: 15000 },
-  { id: 'champion', name: 'Alvin Cube', price: 0, prize: true },   // only from winning the weekly Tower tournament
+  { id: 'champion', name: 'Alvin Cube', price: 0, prize: true, retired: true },   // was the weekly Tower prize; can't be won any more
   { id: 'gambler', name: 'Gambler', price: 0, prize: true },        // only from beating the Gambler boss 7 times
   { id: 'gambler2', name: 'Awakened Gambler', price: 0, prize: true }, // only from beating the normal and Extreme Gambler on 7 days
   { id: 'sigma', name: 'Sigma', price: 0, prize: true, code: true },  // only from a code
@@ -1333,14 +1333,15 @@ function shopTab() {
     const owned = me ? me.skins.includes(s.id) : FREE_SKINS.includes(s.id);
     const price = salePrice(s), onSale = price !== s.price;
     let btn;
-    if (s.prize && !owned) btn = s.id.startsWith('gambler') ? `<button class="small ghost" data-act="boss" data-level="${s.id === 'gambler2' ? 'extreme' : 'normal'}" ${gamblerOn() ? '' : 'disabled'}>${s.id === 'gambler2' ? 'Beat both Gamblers' : 'Beat the Gambler'}</button>` : '<button class="small ghost" data-act="tower">Win the Tower</button>';
+    if (s.retired && !owned) btn = '<button class="small ghost" disabled>Not available</button>';
+    else if (s.prize && !owned) btn = s.id.startsWith('gambler') ? `<button class="small ghost" data-act="boss" data-level="${s.id === 'gambler2' ? 'extreme' : 'normal'}" ${gamblerOn() ? '' : 'disabled'}>${s.id === 'gambler2' ? 'Beat both Gamblers' : 'Beat the Gambler'}</button>` : '<button class="small ghost" data-act="tower">Win the Tower</button>';
     else if (owned) btn = loadouts[0].skin === s.id ? '<button class="small ghost" disabled>Equipped</button>' : `<button class="small ghost" data-act="equip" data-id="${s.id}">Equip</button>`;
     else if (!me) btn = `<button class="small ghost" data-act="goto" data-to="profile">Log in to buy</button>`;
     else btn = `<button class="small coin-btn" data-act="buy" data-id="${s.id}" ${me.coins < price ? 'disabled' : ''}>Buy</button>`;
     return `<div class="skin-card">${onSale ? '<span class="tag">50% OFF</span>' : ''}
       <canvas data-skin-anim="${s.id}" width="144" height="144"></canvas>
       <b>${s.name}</b>
-      <span class="price fine">${owned ? 'Owned' : s.box === 'afk' ? 'AFK Room cube' : s.box === 'alvin' ? 'Alvin Crate cube' : s.box ? 'Case cube' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
+      <span class="price fine">${owned ? 'Owned' : s.box === 'afk' ? 'AFK Room cube' : s.box === 'alvin' ? 'Alvin Crate cube' : s.box ? 'Case cube' : s.retired ? 'No longer available' : s.prize ? (s.id.startsWith('gambler') ? 'Gambler event prize' : 'Weekly Tower prize') : s.price ? `${onSale ? `<s>${s.price}</s>` : ''}${coinHtml(price)}` : 'Free'}</span>
       ${btn}</div>`;
   }).join('');
   return `
@@ -4045,7 +4046,7 @@ const TW = 420;                   // tower width in world units (y goes up)
 const T_CUBE = 26, T_PLAT_H = 14;
 const T_GRAV = 1500, T_JUMP = 560, T_BOUNCE = 840, T_RUN = 200;
 const T_STAGE_H = 1250;
-const TOWER_CLEAR_COINS = 500, TOWER_PRIZE_COINS = 2000;
+const TOWER_CLEAR_COINS = 500, TOWER_PRIZE_COINS = 10000;
 const TOWER_COIN_MS = 300000;     // the 500 coins need a climb of 5:00 or less
 const TOWER_HP = 100, SPIKE_DMG = 10;
 const TOWER_MIN_MS = 120000;      // no real climb is faster than this (the server checks it too)
@@ -4190,7 +4191,7 @@ function renderTowerSetup() {
       <p class="fine">${coarse ? 'Hold ◀ ▶ to move and tap anywhere else to jump.' : 'Move with ← → or A / D. Jump with Space, ↑ or W.'}</p>
       <p class="fine">You have <b>${TOWER_HP} HP</b>. Every spike takes ${SPIKE_DMG}, and it never heals.</p>
       <p class="fine">${cleared ? "You already won this week's coins. Climb again to beat your time." : `Climb it in 5:00 or less: ${coinHtml(TOWER_CLEAR_COINS)} (once a week)`}<br>
-        Fastest climb of the week wins ${coinHtml(TOWER_PRIZE_COINS)} and the <b>Alvin Cube</b> skin.</p>
+        Fastest climb of the week wins ${coinHtml(TOWER_PRIZE_COINS.toLocaleString())}.</p>
       <p class="fine desk-only">Press <b>Enter</b> to start.</p>
     </div></div>
     <div class="setup-right"><div><div class="section-label">Your cube</div><div class="picker">${skins}</div></div>
@@ -4558,10 +4559,9 @@ async function checkTowerPrizes() {
         if (d.tower.prize >= w) throw new GameError('Already collected.');
         d.tower = { ...d.tower, prize: w };
         d.coins += TOWER_PRIZE_COINS;
-        if (!d.skins.includes('champion')) d.skins.push('champion');
       });
       sfx(880, 0.2, 'square', 0.04, 1.5); buzz('success');
-      toast(`You won the weekly Tower tournament! +${TOWER_PRIZE_COINS} coins and the Alvin Cube skin`);
+      toast(`You won the weekly Tower tournament! +${TOWER_PRIZE_COINS.toLocaleString()} coins`);
       if (!$('app').classList.contains('hidden')) renderApp();
     }
   } catch {} finally { checkingPrizes = false; }
@@ -4572,7 +4572,7 @@ function towerCard() {
   return `<div class="card tower-card">
     <div class="row between"><span class="eyebrow tower-eyebrow">Tower tournament</span><span class="fine">Ends in <span class="timer" data-until="${towerWeekEnds(w)}"></span></span></div>
     <h2>The Tower</h2>
-    <p>Climb this week's tower as fast as you can. The fastest climb when the week ends wins ${coinHtml(TOWER_PRIZE_COINS)} and the <b>Alvin Cube</b> skin.</p>
+    <p>Climb this week's tower as fast as you can. The fastest climb when the week ends wins ${coinHtml(TOWER_PRIZE_COINS.toLocaleString())}.</p>
     <div id="towerLb" class="lb">${me ? '<p class="fine">Loading…</p>' : '<p class="fine"><button class="link" data-act="goto" data-to="profile">Log in</button> to see the leaderboard and join.</p>'}</div>
     <p class="fine" id="towerLast"></p>
     <button class="tower-btn" data-act="tower">Climb the Tower</button></div>`;

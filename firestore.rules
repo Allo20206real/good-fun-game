@@ -31,7 +31,7 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/tower/$(string(curWeek()))/runs/$(request.auth.uid)).data.get('best', 1000000000) <= 300000;
     }
 
-    // The fastest climber of a finished week collects 2000 coins and the Champion skin, once per week
+    // The fastest climber of a finished week collects 10,000 coins, once per week
     function prizeClaim(a, b) {
       return b.prize > a.prize && b.prize < curWeek() && b.week == a.week && b.cleared == a.cleared
         && get(/databases/$(database)/documents/towerBest/$(string(b.prize))).data.uid == request.auth.uid;
@@ -236,15 +236,15 @@ service cloud.firestore {
         && (al(request.resource.data) == al(resource.data)
             || alvinStart(al(resource.data), al(request.resource.data))
             || alvinClaim(al(resource.data), al(request.resource.data)))
-        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 2000 for a Tower prize,
+        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 10,000 for a Tower prize,
         // 3000 for the Secret Alvin Tower)
         && (request.resource.data.coins - resource.data.coins <= 300
             || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
-            || (request.resource.data.coins - resource.data.coins <= 2000 && prizeClaim(tw(resource.data), tw(request.resource.data)))
+            || (request.resource.data.coins - resource.data.coins <= 10000 && prizeClaim(tw(resource.data), tw(request.resource.data)))
             || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data)))
             || (request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
                 && request.resource.data.coins - resource.data.coins <= codeDoc().get('coins', 0)))
-        // A new skin has to be paid for, except the prize skins: Champion (Tower prize), Gambler, Awakened Gambler,
+        // A new skin has to be paid for, except the prize skins: Champion (no longer given out), Gambler, Awakened Gambler,
         // Sigma (a code) and the case cubes. A code can also give the skin it names.
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
@@ -266,11 +266,7 @@ service cloud.firestore {
                 && request.resource.data.skins.hasAll(resource.data.skins)
                 && 'gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins)
                 && bossWin(gb(resource.data), gb(request.resource.data))
-                && bothDays(gb(request.resource.data)) >= 7)
-            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
-                && request.resource.data.skins.hasAll(resource.data.skins)
-                && 'champion' in request.resource.data.skins
-                && prizeClaim(tw(resource.data), tw(request.resource.data))));
+                && bothDays(gb(request.resource.data)) >= 7));
 
       // Cases, kept apart from the rule above so each check stays small: a save that only buys a case,
       // opens an Alvin Crate or collects the prize
