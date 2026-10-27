@@ -272,14 +272,14 @@ service cloud.firestore {
       // opens an Alvin Crate or collects the prize
       allow update: if signedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'opening', 'alvin'])
-        && request.resource.data.coins is int && request.resource.data.skins.size() <= 40
+        && request.resource.data.coins is int && request.resource.data.coins >= 0 && request.resource.data.skins.size() <= 40
         && (caseBuy(resource.data, request.resource.data) || crateBuy(resource.data, request.resource.data)
             || caseClaim(resource.data, request.resource.data));
 
       // Collecting AFK Room rewards
       allow update: if signedIn() && request.auth.uid == uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'afkClaim'])
-        && request.resource.data.coins is int && request.resource.data.skins.size() <= 40
+        && request.resource.data.coins is int && request.resource.data.coins >= 0 && request.resource.data.skins.size() <= 40
         && afkPaid(resource.data, request.resource.data, get(/databases/$(database)/documents/afk/$(uid)).data);
 
       // Players can delete their own account
