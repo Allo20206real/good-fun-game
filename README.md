@@ -95,9 +95,9 @@ The Cases tab sells four cases. Each one gives coins or a cube, and a cube you a
 | Starter Case | 100 | Ruby 8%, Gold 2% |
 | Legendary Case | 1,000 | Plasma 12%, Dragon 5% |
 | Ultra Case | 10,000 | Dragon 15%, Phoenix 3% |
-| Limited Case | 15,000 | Frostfire 20%, Phoenix 10%, Diamond 3% |
+| Limited Case | 5,000 | Frostfire 20%, Aurora 15%, Eclipse 10%, Diamond 3% |
 
-Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire and Diamond only from the Limited Case, which is sold until 10 November 2026. Case cubes only show up in the shop for players who own them. The full chances are under "What's inside" on each case.
+Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire, Aurora, Eclipse and Diamond only from the Limited Case, which is sold until 10 November 2026. Case cubes only show up in the shop for players who own them. The full chances are under "What's inside" on each case.
 
 The server picks the prize: buying a case stamps the server's clock on the account, and the last three digits of that time in milliseconds choose the prize. `firestore.rules` checks that the prize collected is the one the time chose, so the case tables in `index.html` (`CASES`) and `firestore.rules` must stay the same.
 

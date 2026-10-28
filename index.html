@@ -733,6 +733,8 @@ const SKINS = [
   { id: 'phoenix', name: 'Phoenix', price: 0, prize: true, box: true },
   { id: 'frostfire', name: 'Frostfire', price: 0, prize: true, box: true },
   { id: 'diamond', name: 'Diamond', price: 0, prize: true, box: true },
+  { id: 'aurora', name: 'Aurora', price: 0, prize: true, box: true },
+  { id: 'eclipse', name: 'Eclipse', price: 0, prize: true, box: true },
   // Only from the Alvin Crate (finishing the Secret Alvin Tower)
   { id: 'sigmagold', name: 'Golden Sigma', price: 0, prize: true, box: 'alvin' },
   { id: 'sigmashadow', name: 'Shadow Sigma', price: 0, prize: true, box: 'alvin' },
@@ -759,10 +761,11 @@ const CASES = [
     { w: 300, coins: 5000, r: 'common' }, { w: 200, coins: 9000, r: 'rare' }, { w: 150, skin: 'moai', dupe: 7000, r: 'epic' },
     { w: 120, skin: 'plasma', dupe: 6000, r: 'epic' }, { w: 150, skin: 'dragon', dupe: 8000, r: 'legendary' }, { w: 50, coins: 25000, r: 'legendary' },
     { w: 30, skin: 'phoenix', dupe: 15000, r: 'mythic' } ] },
-  { id: 'limited', name: 'Limited Case', price: 15000, color: '#22d3ee', limited: true, items: [
-    { w: 250, coins: 8000, r: 'common' }, { w: 200, coins: 13000, r: 'rare' }, { w: 200, skin: 'frostfire', dupe: 10000, r: 'limited' },
-    { w: 150, skin: 'dragon', dupe: 10000, r: 'legendary' }, { w: 100, skin: 'phoenix', dupe: 15000, r: 'mythic' }, { w: 70, coins: 30000, r: 'legendary' },
-    { w: 30, skin: 'diamond', dupe: 25000, r: 'limited' } ] },
+  // Only limited things: its four cubes can't be found anywhere else
+  { id: 'limited', name: 'Limited Case', price: 5000, color: '#22d3ee', limited: true, items: [
+    { w: 250, coins: 2500, r: 'common' }, { w: 200, coins: 4500, r: 'rare' }, { w: 200, skin: 'frostfire', dupe: 3500, r: 'limited' },
+    { w: 150, skin: 'aurora', dupe: 3500, r: 'limited' }, { w: 100, skin: 'eclipse', dupe: 5000, r: 'limited' }, { w: 70, coins: 10000, r: 'legendary' },
+    { w: 30, skin: 'diamond', dupe: 8000, r: 'limited' } ] },
   // One free crate for each finished climb of the Secret Alvin Tower. The WoW Cube's 1 in 1000 only counts
   // when the climb's start time (in milliseconds) is even, which makes it 1 in 2000; otherwise it's 5000 coins.
   { id: 'alvin', name: 'Alvin Crate', price: 0, color: '#facc15', crate: true, items: [
@@ -1411,7 +1414,7 @@ function casesTab() {
   }).join('');
   return `
     <div class="row between"><h2>Cases</h2>${me ? `<span class="pill">${coinHtml(me.coins)}</span>` : ''}</div>
-    <p class="fine">Open a case to win coins or a cube. Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire and Diamond only from the Limited Case. If you get a cube you already own, you get coins instead.</p>
+    <p class="fine">Open a case to win coins or a cube. Ruby, Plasma, Dragon and Phoenix only come from cases, and Frostfire, Aurora, Eclipse and Diamond only from the Limited Case. If you get a cube you already own, you get coins instead.</p>
     ${pending ? `<div class="card"><b>You have a case waiting to be opened.</b><button data-act="claimCase">Open it</button></div>` : ''}
     <div class="case-grid">${cards}</div>`;
 }
@@ -3802,6 +3805,43 @@ function drawSkin(c, x, y, s, skin, t) {
       c.beginPath(); c.moveTo(sx - r, sy); c.lineTo(sx, sy + r * 0.2); c.lineTo(sx + r, sy); c.lineTo(sx, sy - r * 0.2); c.fill();
     }
     c.strokeStyle = '#ffffff'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(l, top, s, s);
+  } else if (skin === 'aurora') {
+    // Northern lights rippling over a night sky
+    const g = c.createLinearGradient(l, top, l, top + s);
+    g.addColorStop(0, '#020617'); g.addColorStop(1, '#0f2a3a');
+    c.fillStyle = g; c.fillRect(l, top, s, s);
+    c.save(); c.beginPath(); c.rect(l, top, s, s); c.clip();
+    c.globalCompositeOperation = 'lighter';
+    [['#22c55e', 0.3, 0], ['#a855f7', 0.45, 2], ['#38bdf8', 0.6, 4]].forEach(([col, yy, ph]) => {
+      const band = c.createLinearGradient(l, top + s * (yy - 0.18), l, top + s * (yy + 0.18));
+      band.addColorStop(0, 'rgba(0,0,0,0)'); band.addColorStop(0.5, col); band.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = band; c.globalAlpha = 0.55;
+      c.beginPath(); c.moveTo(l, top + s);
+      for (let i = 0; i <= 12; i++) { const fx = i / 12; c.lineTo(l + fx * s, top + s * (yy + 0.1 * Math.sin(fx * 6 + t * 1.6 + ph))); }
+      c.lineTo(l + s, top + s * (yy + 0.35)); c.lineTo(l, top + s * (yy + 0.35)); c.closePath(); c.fill();
+    });
+    c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+    c.fillStyle = '#fff';
+    for (const st of STARS.slice(0, 8)) { c.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t * 2 + st.p)); c.fillRect(x + st.x * s * 0.85, top + s * (0.08 + Math.abs(st.y) * 0.3), Math.max(1, s * 0.03), Math.max(1, s * 0.03)); }
+    c.restore();
+    c.strokeStyle = '#5eead4'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(l, top, s, s);
+  } else if (skin === 'eclipse') {
+    // A black sun with a golden corona
+    c.fillStyle = '#05030a'; c.fillRect(l, top, s, s);
+    c.save(); c.beginPath(); c.rect(l, top, s, s); c.clip();
+    const pulse = 0.5 + 0.5 * Math.sin(t * 2.5);
+    const cg = c.createRadialGradient(x, y, s * 0.2, x, y, s * (0.5 + 0.08 * pulse));
+    cg.addColorStop(0, 'rgba(255,214,102,1)'); cg.addColorStop(0.35, 'rgba(249,115,22,.6)'); cg.addColorStop(1, 'rgba(249,115,22,0)');
+    c.fillStyle = cg; c.fillRect(l, top, s, s);
+    c.strokeStyle = 'rgba(255,236,170,.75)'; c.lineWidth = Math.max(1, s * 0.02);
+    for (let k = 0; k < 12; k++) {   // rays turning slowly
+      const a = k * Math.PI / 6 + t * 0.4, r1 = s * 0.25, r2 = s * (0.36 + 0.06 * Math.sin(t * 3 + k));
+      c.beginPath(); c.moveTo(x + Math.cos(a) * r1, y + Math.sin(a) * r1); c.lineTo(x + Math.cos(a) * r2, y + Math.sin(a) * r2); c.stroke();
+    }
+    c.fillStyle = '#000'; c.beginPath(); c.arc(x, y, s * 0.22, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#fde68a'; c.lineWidth = Math.max(1, s * 0.025); c.beginPath(); c.arc(x, y, s * 0.22, 0, Math.PI * 2); c.stroke();
+    c.restore();
+    c.strokeStyle = '#f59e0b'; c.lineWidth = Math.max(1, s * 0.05); c.strokeRect(l, top, s, s);
   } else if (skin === 'sleepy') {
     const g = c.createLinearGradient(l, top, l, top + s);
     g.addColorStop(0, '#818cf8'); g.addColorStop(1, '#312e81');

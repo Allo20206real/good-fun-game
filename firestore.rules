@@ -98,7 +98,7 @@ service cloud.firestore {
       return d.get('opening', {});
     }
     function casePrice(t) {
-      return {'basic': 100, 'legendary': 1000, 'ultra': 10000, 'limited': 15000}[t];
+      return {'basic': 100, 'legendary': 1000, 'ultra': 10000, 'limited': 5000}[t];
     }
     // Which of the 7 items r (0-999) lands on, given where each chance ends when they are added up
     function idx(r, e0, e1, e2, e3, e4, e5) {
@@ -117,14 +117,14 @@ service cloud.firestore {
         : t == 'basic' ? ['', '', 'neon', 'candy', '', 'ruby', 'gold']
         : t == 'legendary' ? ['', '', 'rainbow', 'ruby', 'plasma', '', 'dragon']
         : t == 'ultra' ? ['', '', 'moai', 'plasma', 'dragon', '', 'phoenix']
-        : ['', '', 'frostfire', 'dragon', 'phoenix', '', 'diamond'])[i];
+        : ['', '', 'frostfire', 'aurora', 'eclipse', '', 'diamond'])[i];
     }
     function caseCoins(t, i) {
       return (t == 'alvin' ? [300, 600, 500, 1500, 1000, 5000, 3000, 20000]
         : t == 'basic' ? [50, 100, 50, 70, 250, 100, 150]
         : t == 'legendary' ? [500, 900, 500, 500, 600, 2500, 1500]
         : t == 'ultra' ? [5000, 9000, 7000, 6000, 8000, 25000, 15000]
-        : [8000, 13000, 10000, 10000, 15000, 30000, 25000])[i];
+        : [2500, 4500, 3500, 3500, 5000, 10000, 8000])[i];
     }
     function prizeAt(t, i) {
       return {'skin': caseSkin(t, i), 'coins': caseCoins(t, i)};
@@ -270,7 +270,7 @@ service cloud.firestore {
         && (request.resource.data.skins.size() == resource.data.skins.size()
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
                 && !request.resource.data.skins.toSet().difference(resource.data.skins.toSet()).hasAny(['champion', 'gambler',
-                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond', 'sigmagold', 'sigmashadow',
+                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond', 'aurora', 'eclipse', 'sigmagold', 'sigmashadow',
                   'sigmagiga', 'wow', 'sleepy'])
                 && resource.data.coins - request.resource.data.coins >= 50)
             || (request.resource.data.skins.size() == resource.data.skins.size() + 1
