@@ -504,7 +504,7 @@ const AUTH_ERRORS = {
   MISSING_EMAIL: 'Enter your email address.',
   MISSING_PASSWORD: 'Enter your password.',
   TOO_MANY_ATTEMPTS_TRY_LATER: 'Too many attempts. Try again in a few minutes.',
-  USER_DISABLED: 'This account has been disabled.',
+  USER_DISABLED: 'Wrong email or password.',   // a banned account just looks like a failed login
   OPERATION_NOT_ALLOWED: 'Email/password sign-in is not turned on in Firebase yet.',
   CONFIGURATION_NOT_FOUND: 'Firebase Authentication is not set up for this game yet.',
   TOKEN_EXPIRED: 'You were signed out. Log in again.',
@@ -557,7 +557,15 @@ async function idToken(sess) {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'grant_type=refresh_token&refresh_token=' + encodeURIComponent(sess.refreshToken),
     });
-    if (!res.ok) throw new GameError(AUTH_ERRORS[body.error?.message] || 'You were signed out. Log in again.');
+    if (!res.ok) {
+      // A banned (disabled) account is logged out quietly, as if the login had simply ended
+      if (/USER_DISABLED/.test(body.error?.message || '') && sess === auth1) {
+        logout1();
+        setTimeout(() => { if (!$('app').classList.contains('hidden')) renderApp(); }, 0);
+        throw new GameError('Something went wrong. Try again.');
+      }
+      throw new GameError(AUTH_ERRORS[body.error?.message] || 'You were signed out. Log in again.');
+    }
     Object.assign(sess, makeSession({ ...body, email: sess.email }));
     if (sess === auth1) store.set('bd.auth', { uid: sess.uid, email: sess.email, refreshToken: sess.refreshToken });
   }
@@ -992,7 +1000,7 @@ async function restoreSession() {
   try { await finishLogin(sess); }
   catch (e) {
     auth1 = null; me = null;
-    if (/signed out/.test(e.message)) store.set('bd.auth', null);
+    if (/signed out|Wrong email/.test(e.message)) store.set('bd.auth', null);   // 'Wrong email': a banned account
   }
 }
 
