@@ -1,0 +1,414 @@
+rules_version = '2';
+
+// Security rules for Bounce Duel. Paste these into Firebase console → Firestore Database → Rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The account owns this username (usernames/{lowercase name} → { uid })
+    function ownsName(n) {
+      return n is string && exists(/databases/$(database)/documents/usernames/$(n.lower()))
+        && get(/databases/$(database)/documents/usernames/$(n.lower())).data.uid == request.auth.uid;
+    }
+
+    // The Tower's week number (weeks start Monday 00:00 UTC, counted from 1 January 2024)
+    function curWeek() {
+      return int(math.floor((request.time.toMillis() - 1704067200000) / 604800000.0));
+    }
+
+    // Tower progress on an account: { week, cleared, prize }
+    function tw(d) {
+      return d.get('tower', {'week': -1, 'cleared': false, 'prize': -1});
+    }
+
+    // A climb of 5:00 or less: worth up to 500 coins, once a week, after the time is saved
+    function firstClear(a, b) {
+      return b.week == curWeek() && b.cleared == true && b.prize == a.prize
+        && !(a.week == b.week && a.cleared == true)
+        && get(/databases/$(database)/documents/tower/$(string(curWeek()))/runs/$(request.auth.uid)).data.get('best', 1000000000) <= 300000;
+    }
+
+    // The fastest climber of a finished week collects 10,000 coins, once per week
+    function prizeClaim(a, b) {
+      return b.prize > a.prize && b.prize < curWeek() && b.week == a.week && b.cleared == a.cleared
+        && get(/databases/$(database)/documents/towerBest/$(string(b.prize))).data.uid == request.auth.uid;
+    }
+
+    // Gambler event: 8 days from 26 October 2026 (UTC). One win a day against the normal boss ('days')
+    // and one against the Extreme boss ('xdays'). 7 normal wins unlock the Gambler cube; 7 days with
+    // both unlock the Awakened Gambler.
+    function gDay() {
+      return int(math.floor((request.time.toMillis() - 1792972800000) / 86400000.0));
+    }
+    function gb(d) {
+      return d.get('gambler', {'days': []});
+    }
+    // Today's win added to list k, and nothing else changed
+    function gWin(a, b, k, other) {
+      return b.get(k, []).size() == a.get(k, []).size() + 1
+        && b.get(k, []).hasAll(a.get(k, [])) && b.get(k, []).hasAny([gDay()]) && !a.get(k, []).hasAny([gDay()])
+        && b.get(other, []) == a.get(other, []);
+    }
+    function bossWin(a, b) {
+      return gDay() >= 0 && gDay() < 8 && b.keys().hasOnly(['days', 'xdays'])
+        && (gWin(a, b, 'days', 'xdays') || gWin(a, b, 'xdays', 'days'));
+    }
+    function bothDays(g) {
+      return g.get('days', []).toSet().intersection(g.get('xdays', []).toSet()).size();
+    }
+
+    // Secret Alvin Tower: { start, done, crate }. Each climb notes its start with the server's clock; reaching the
+    // top once pays 3000 coins, if at least 2.5 minutes have passed since that start. Every such climb also opens
+    // one Alvin Crate, and 'crate' remembers which climb's crate was opened last.
+    function al(d) {
+      return d.get('alvin', {});
+    }
+    function alvinStart(a, b) {
+      return b.keys().hasOnly(['start', 'done', 'crate']) && b.start == request.time && b.get('done', false) == a.get('done', false)
+        && b.get('crate', null) == a.get('crate', null);
+    }
+    function alvinClaim(a, b) {
+      return a.get('done', false) == false && b.keys().hasOnly(['start', 'done', 'crate']) && b.done == true
+        && 'start' in a && b.start == a.start && b.get('crate', null) == a.get('crate', null)
+        && request.time.toMillis() - a.start.toMillis() >= 150000;
+    }
+
+    // Codes: codes/{CODE} = { skin, coins, left }, made in the Firebase console. Redeeming adds the code to
+    // the account's 'codes' list and lowers the code's 'left' count in the same write.
+    function newCode() {
+      return request.resource.data.codes[request.resource.data.codes.size() - 1];
+    }
+    function codeDoc() {
+      return get(/databases/$(database)/documents/codes/$(newCode())).data;
+    }
+    function redeem() {
+      return request.resource.data.get('codes', []).size() == resource.data.get('codes', []).size() + 1
+        && request.resource.data.codes.hasAll(resource.data.get('codes', []))
+        && !resource.data.get('codes', []).hasAny([newCode()])
+        && getAfter(/databases/$(database)/documents/codes/$(newCode())).data.left == codeDoc().left - 1;
+    }
+
+    // Cases: opening = { type, at, done }. Buying a case pays its price and stamps the server's clock in 'at';
+    // the last three digits of that time in milliseconds pick the prize (chances out of 1000, the same tables
+    // as CASES in index.html). A second save collects exactly that prize. A cube you already own pays 'dupe' coins.
+    function op(d) {
+      return d.get('opening', {});
+    }
+    function casePrice(t) {
+      return {'basic': 100, 'legendary': 1000, 'ultra': 10000, 'limited': 5000}[t];
+    }
+    // Which of the 7 items r (0-999) lands on, given where each chance ends when they are added up
+    function idx(r, e0, e1, e2, e3, e4, e5) {
+      return (r >= e0 ? 1 : 0) + (r >= e1 ? 1 : 0) + (r >= e2 ? 1 : 0) + (r >= e3 ? 1 : 0) + (r >= e4 ? 1 : 0) + (r >= e5 ? 1 : 0);
+    }
+    function caseIdx(t, r) {
+      return t == 'alvin' ? idx(r, 300, 550, 700, 820, 920, 970) + (r >= 999 ? 1 : 0)
+        : t == 'basic' ? idx(r, 350, 600, 750, 850, 900, 980)
+        : t == 'legendary' ? idx(r, 270, 470, 620, 770, 890, 950)
+        : t == 'ultra' ? idx(r, 300, 500, 650, 770, 920, 970)
+        : idx(r, 250, 450, 650, 800, 900, 970);
+    }
+    // The cube of each item ('' for coins), and its coins (for a cube: what it pays if you already own it)
+    function caseSkin(t, i) {
+      return (t == 'alvin' ? ['', '', 'sigmagold', '', 'sigmashadow', '', 'sigmagiga', 'wow']
+        : t == 'basic' ? ['', '', 'neon', 'candy', '', 'ruby', 'gold']
+        : t == 'legendary' ? ['', '', 'rainbow', 'ruby', 'plasma', '', 'dragon']
+        : t == 'ultra' ? ['', '', 'moai', 'plasma', 'dragon', '', 'phoenix']
+        : ['', '', 'frostfire', 'aurora', 'eclipse', '', 'diamond'])[i];
+    }
+    function caseCoins(t, i) {
+      return (t == 'alvin' ? [300, 600, 500, 1500, 1000, 5000, 3000, 20000]
+        : t == 'basic' ? [50, 100, 50, 70, 250, 100, 150]
+        : t == 'legendary' ? [500, 900, 500, 500, 600, 2500, 1500]
+        : t == 'ultra' ? [5000, 9000, 7000, 6000, 8000, 25000, 15000]
+        : [2500, 4500, 3500, 3500, 5000, 10000, 8000])[i];
+    }
+    function prizeAt(t, i) {
+      return {'skin': caseSkin(t, i), 'coins': caseCoins(t, i)};
+    }
+    // The WoW Cube (Alvin Crate item 7) only counts when the climb started on an even millisecond: 1 in 2000.
+    // Otherwise it is the 5000 coins (item 5).
+    function wowCheck(o, i) {
+      return (i == 7 && o.climb.toMillis() % 2 == 1) ? 5 : i;
+    }
+    function casePrize(o) {
+      return prizeAt(o.type, wowCheck(o, caseIdx(o.type, o.at.toMillis() % 1000)));
+    }
+    function caseBuy(a, b) {
+      return op(b).keys().hasOnly(['type', 'at', 'done']) && op(b).type in ['basic', 'legendary', 'ultra', 'limited']
+        && op(b).at == request.time && op(b).done == false && op(a).get('done', true) == true
+        && a.coins - b.coins == casePrice(op(b).type) && b.skins == a.skins && al(b) == al(a)
+        // The Limited Case is sold until 10 November 2026
+        && (op(b).type != 'limited' || request.time < timestamp.date(2026, 11, 10));
+    }
+    function caseGain(a, b, p) {
+      return (p.skin == '' || p.skin in a.skins)
+        ? (b.skins == a.skins && b.coins - a.coins == p.coins)
+        : (b.coins == a.coins && b.skins.size() == a.skins.size() + 1 && b.skins.hasAll(a.skins) && p.skin in b.skins);
+    }
+    function caseClaim(a, b) {
+      return op(a).get('done', true) == false && op(b).diff(op(a)).affectedKeys().hasOnly(['done']) && op(b).done == true
+        && al(b) == al(a) && caseGain(a, b, casePrize(op(a)));
+    }
+    // A free Alvin Crate for a climb of the Secret Alvin Tower that took at least 2.5 minutes, once per climb
+    function crateBuy(a, b) {
+      return op(b).keys().hasOnly(['type', 'at', 'done', 'climb']) && op(b).type == 'alvin'
+        && op(b).at == request.time && op(b).done == false && op(a).get('done', true) == true
+        && b.coins == a.coins && b.skins == a.skins
+        && op(b).climb == al(a).start && request.time.toMillis() - al(a).start.toMillis() >= 150000
+        && al(a).get('crate', null) != al(a).start
+        && al(b).diff(al(a)).affectedKeys().hasOnly(['crate']) && al(b).crate == al(a).start;
+    }
+
+    // AFK Room: afk/{uid} = { start, last } on the server's clock, with check-ins at most 5 minutes apart.
+    // Collecting pays 10 coins per 10 minutes from start to last (up to 300), plus the Sleepy cube after 5 hours
+    // (500 coins instead if you own it), and saves that start as 'afkClaim' so the same time can't pay twice.
+    function afkCap(c) {
+      return c > 300 ? 300 : c;
+    }
+    function afkGain(a, b, five, c) {
+      return (five && !('sleepy' in a.skins))
+        ? (b.coins - a.coins == c && b.skins.size() == a.skins.size() + 1 && b.skins.hasAll(a.skins) && 'sleepy' in b.skins)
+        : (b.skins == a.skins && b.coins - a.coins == c + (five ? 500 : 0));
+    }
+    function afkTime(f) {
+      return f.last.toMillis() - f.start.toMillis();
+    }
+    function afkPaid(a, b, f) {
+      return b.afkClaim == f.start && a.get('afkClaim', null) != f.start && b.get('ads', null) == a.get('ads', null)
+        && afkGain(a, b, afkTime(f) >= 18000000, afkCap(int(math.floor(afkTime(f) / 600000.0)) * 10));
+    }
+
+    // Watching a video ad pays 25 coins, at most 5 times a UTC day: ads = { day, n }
+    function adDay() {
+      return int(math.floor(request.time.toMillis() / 86400000.0));
+    }
+    function adPaid(a, b) {
+      return b.ads.keys().hasOnly(['day', 'n']) && b.ads.day == adDay()
+        && b.ads.n == (a.get('ads', {'day': -1, 'n': 0}).day == adDay() ? a.ads.n : 0) + 1 && b.ads.n <= 5
+        && b.coins - a.coins == 25 && b.skins == a.skins && b.get('afkClaim', null) == a.get('afkClaim', null);
+    }
+
+    // Badges shown next to a name: badgesOn lists up to 3 badges the player owns. Who owns each badge is fixed
+    // here: 'admin' is only Allo20206's account.
+    function badgesOk(d, uid) {
+      return d.badgesOn is list && d.badgesOn.size() <= 3 && d.badgesOn.toSet().size() == d.badgesOn.size()
+        && d.badgesOn.hasOnly(['admin'])
+        && (!('admin' in d.badgesOn) || uid == '4rWjwYNcJracFelFVmJT4Kvwhyd2');
+    }
+
+    function validUser(d) {
+      return d.keys().hasOnly(['name', 'score', 'coins', 'skins', 'wins1p', 'losses1p', 'wins2p', 'losses2p', 'groups', 'daily', 'streak', 'tower', 'gambler', 'alvin', 'codes', 'opening', 'afkClaim', 'ads', 'badgesOn'])
+        && d.name is string && d.name.size() >= 1 && d.name.size() <= 16
+        && d.score is int && d.score >= 0
+        && d.coins is int && d.coins >= 0
+        && d.skins is list && d.skins.size() <= 40
+        && d.groups is list && d.groups.size() <= 10
+        && d.wins1p is int && d.losses1p is int && d.wins2p is int && d.losses2p is int
+        && d.daily is map && d.streak is map
+        && tw(d).keys().hasOnly(['week', 'cleared', 'prize'])
+        && tw(d).week is int && tw(d).cleared is bool && tw(d).prize is int
+        && gb(d).days is list && gb(d).days.size() <= 8
+        && gb(d).get('xdays', []) is list && gb(d).get('xdays', []).size() <= 8
+        && al(d) is map && op(d) is map
+        && d.get('codes', []) is list && d.get('codes', []).size() <= 50;
+    }
+
+    // Player accounts. Anyone signed in can read them (for leaderboards); only the owner can change theirs.
+    match /users/{uid} {
+      allow read: if signedIn();
+
+      allow create: if signedIn() && request.auth.uid == uid
+        && validUser(request.resource.data)
+        && ownsName(request.resource.data.name)
+        && request.resource.data.score == 100
+        && request.resource.data.coins == 50
+        && request.resource.data.skins.size() == 2
+        && tw(request.resource.data) == {'week': -1, 'cleared': false, 'prize': -1}
+        && gb(request.resource.data).days.size() == 0 && gb(request.resource.data).get('xdays', []).size() == 0
+        && !('alvin' in request.resource.data) && !('codes' in request.resource.data) && !('opening' in request.resource.data)
+        && !('afkClaim' in request.resource.data) && !('ads' in request.resource.data)
+        && !('badgesOn' in request.resource.data);
+
+      allow update: if signedIn() && request.auth.uid == uid
+        && validUser(request.resource.data)
+        // A new name has to be a username this account owns
+        && (request.resource.data.name == resource.data.name || ownsName(request.resource.data.name))
+        // A two-player match moves the score by at most 100
+        && request.resource.data.score - resource.data.score <= 100
+        && resource.data.score - request.resource.data.score <= 100
+        // Tower progress only changes by a first climb or a tournament prize
+        && (tw(request.resource.data) == tw(resource.data)
+            || firstClear(tw(resource.data), tw(request.resource.data))
+            || prizeClaim(tw(resource.data), tw(request.resource.data)))
+        // Gambler progress only grows by one boss win a day
+        && (gb(request.resource.data) == gb(resource.data) || bossWin(gb(resource.data), gb(request.resource.data)))
+        // Codes only change by redeeming one
+        && (request.resource.data.get('codes', []) == resource.data.get('codes', []) || redeem())
+        // Cases and the AFK Room have their own rules below
+        && op(request.resource.data) == op(resource.data)
+        && request.resource.data.get('afkClaim', null) == resource.data.get('afkClaim', null)
+        && request.resource.data.get('ads', null) == resource.data.get('ads', null)
+        && request.resource.data.get('badgesOn', null) == resource.data.get('badgesOn', null)
+        // The Secret Alvin Tower: a climb starts, or the one prize is collected
+        && (al(request.resource.data) == al(resource.data)
+            || alvinStart(al(resource.data), al(request.resource.data))
+            || alvinClaim(al(resource.data), al(request.resource.data)))
+        // No single save can add more than 300 coins (500 for a Tower climb under 5:00, 10,000 for a Tower prize,
+        // 3000 for the Secret Alvin Tower)
+        && (request.resource.data.coins - resource.data.coins <= 300
+            || (request.resource.data.coins - resource.data.coins <= 500 && firstClear(tw(resource.data), tw(request.resource.data)))
+            || (request.resource.data.coins - resource.data.coins <= 10000 && prizeClaim(tw(resource.data), tw(request.resource.data)))
+            || (request.resource.data.coins - resource.data.coins <= 3000 && alvinClaim(al(resource.data), al(request.resource.data)))
+            || (request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
+                && request.resource.data.coins - resource.data.coins <= codeDoc().get('coins', 0)))
+        // A new skin has to be paid for, except the prize skins: Champion (no longer given out), Gambler, Awakened Gambler,
+        // Sigma (a code) and the case cubes. A code can also give the skin it names.
+        && (request.resource.data.skins.size() == resource.data.skins.size()
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && !request.resource.data.skins.toSet().difference(resource.data.skins.toSet()).hasAny(['champion', 'gambler',
+                  'gambler2', 'sigma', 'ruby', 'plasma', 'dragon', 'phoenix', 'frostfire', 'diamond', 'aurora', 'eclipse', 'sigmagold', 'sigmashadow',
+                  'sigmagiga', 'wow', 'sleepy'])
+                && resource.data.coins - request.resource.data.coins >= 50)
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && request.resource.data.get('codes', []) != resource.data.get('codes', []) && redeem()
+                && codeDoc().get('skin', '') in request.resource.data.skins
+                && !(codeDoc().get('skin', '') in resource.data.skins))
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && 'gambler' in request.resource.data.skins && !('gambler' in resource.data.skins)
+                && bossWin(gb(resource.data), gb(request.resource.data))
+                && gb(request.resource.data).days.size() >= 7)
+            || (request.resource.data.skins.size() == resource.data.skins.size() + 1
+                && request.resource.data.skins.hasAll(resource.data.skins)
+                && 'gambler2' in request.resource.data.skins && !('gambler2' in resource.data.skins)
+                && bossWin(gb(resource.data), gb(request.resource.data))
+                && bothDays(gb(request.resource.data)) >= 7));
+
+      // Cases, kept apart from the rule above so each check stays small: a save that only buys a case,
+      // opens an Alvin Crate or collects the prize
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'opening', 'alvin'])
+        && request.resource.data.coins is int && request.resource.data.coins >= 0 && request.resource.data.skins.size() <= 40
+        && (caseBuy(resource.data, request.resource.data) || crateBuy(resource.data, request.resource.data)
+            || caseClaim(resource.data, request.resource.data));
+
+      // Choosing which badges to show
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['badgesOn'])
+        && badgesOk(request.resource.data, uid);
+
+      // Collecting AFK Room rewards, or coins for watching an ad
+      allow update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['coins', 'skins', 'afkClaim', 'ads'])
+        && request.resource.data.coins is int && request.resource.data.coins >= 0 && request.resource.data.skins.size() <= 40
+        && (adPaid(resource.data, request.resource.data)
+            || afkPaid(resource.data, request.resource.data, get(/databases/$(database)/documents/afk/$(uid)).data));
+
+      // Players can delete their own account
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // AFK Room time: a new round starts now, or a check-in within 5 minutes of the last one moves 'last' to now
+    match /afk/{uid} {
+      allow read, delete: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['start', 'last'])
+        && request.resource.data.last == request.time
+        && (request.resource.data.start == request.time
+            || (resource != null && request.resource.data.start == resource.data.start
+                && request.time.toMillis() - resource.data.last.toMillis() <= 300000));
+    }
+
+    // Tower climbs. One doc per player per week; the server's clock times the climb.
+    match /tower/{week}/runs/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && week == string(curWeek())
+        && request.resource.data.keys().hasOnly(['name', 'skin', 'start', 'best'])
+        && request.resource.data.name == get(/databases/$(database)/documents/users/$(uid)).data.name
+        && request.resource.data.skin is string && request.resource.data.skin.size() <= 20
+        && (
+          // Starting a climb: the start time is the server's clock and the best time stays the same
+          (request.resource.data.start == request.time
+            && ((resource == null && !('best' in request.resource.data))
+                || (resource != null && request.resource.data.get('best', -1) == resource.data.get('best', -1))))
+          ||
+          // Finishing: a faster time that fits in the real time since the climb started (and at least 2 minutes)
+          (resource != null && request.resource.data.start == resource.data.start
+            && request.resource.data.name == resource.data.name
+            && request.resource.data.best is int && request.resource.data.best >= 120000
+            && request.resource.data.best < resource.data.get('best', 1000000000)
+            && request.resource.data.best <= request.time.toMillis() - resource.data.start.toMillis() + 5000)
+        );
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    // The fastest climb of each week, which wins the tournament
+    match /towerBest/{week} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && week == string(curWeek())
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'time'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 16
+        && request.resource.data.time == get(/databases/$(database)/documents/tower/$(week)/runs/$(request.auth.uid)).data.best
+        && (resource == null || request.resource.data.time < resource.data.time);
+    }
+
+    // Codes: anyone signed in can look one up; using one only lowers its 'left' count by one, together with
+    // adding it to your account. Only you (in the Firebase console) can make or change codes.
+    match /codes/{code} {
+      allow read: if signedIn();
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['left'])
+        && resource.data.left > 0 && request.resource.data.left == resource.data.left - 1
+        && !get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('codes', []).hasAny([code])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('codes', []).hasAny([code]);
+    }
+
+    // Usernames are unique: the doc id is the lowercase username, and it records who owns it.
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if signedIn()
+        && name.matches('^[a-z0-9_.]{3,16}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Friend groups. The doc id is the 6-character invite code.
+    match /groups/{code} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && code.matches('^[A-Z0-9]{6}$')
+        && request.resource.data.keys().hasOnly(['name', 'owner', 'members'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 24
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.members == [request.auth.uid];
+
+      // Members can only add or remove themselves
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
+        && (
+          (request.resource.data.members.hasAll(resource.data.members)
+            && request.resource.data.members.size() == resource.data.members.size() + 1
+            && request.resource.data.members.size() <= 30
+            && request.auth.uid in request.resource.data.members
+            && !(request.auth.uid in resource.data.members))
+          ||
+          (resource.data.members.hasAll(request.resource.data.members)
+            && request.resource.data.members.size() == resource.data.members.size() - 1
+            && request.auth.uid in resource.data.members
+            && !(request.auth.uid in request.resource.data.members))
+        );
+
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid && resource.data.members.size() <= 1;
+    }
+  }
+}
